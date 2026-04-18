@@ -19,7 +19,3 @@ lxml~=6.0.2
 
 # AI SDK — relaxed to allow minor updates (fast-moving SDK)
 anthropic>=0.88.0,<2.0.0
-
-# MCP servers used by common Fly deployments
-idea-reality-mcp>=0.5.0,<1.0.0
-telegram-mcp>=0.6.0,<1.0.0

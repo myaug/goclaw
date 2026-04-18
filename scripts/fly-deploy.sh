@@ -81,11 +81,6 @@ green "  Deploy complete!"
 green "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  URL: https://$APP.fly.dev"
 echo ""
-echo "  Optional: bootstrap idea-reality MCP on this deployment"
-echo "    bash scripts/fly-add-idea-reality-mcp.sh"
-echo ""
-echo "  Optional: bootstrap telegram-mcp on this deployment"
-echo "    bash scripts/fly-add-telegram-mcp.sh"
 echo
 
 flyctl status --app "$APP"
