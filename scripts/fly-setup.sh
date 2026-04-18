@@ -134,6 +134,16 @@ echo "    GOCLAW_ANTHROPIC_API_KEY   — Claude (Anthropic)"
 echo "    GOCLAW_OPENAI_API_KEY      — GPT / o-series"
 echo "    GOCLAW_OPENROUTER_API_KEY  — OpenRouter"
 echo "    GOCLAW_GEMINI_API_KEY      — Gemini (Google)"
+echo ""
+echo "  Optional tokens for idea-reality MCP (if you plan to enable it):"
+echo "    GITHUB_TOKEN               — higher GitHub API limits"
+echo "    PRODUCTHUNT_TOKEN          — enable Product Hunt in deep mode"
+echo ""
+echo "  Optional secrets for telegram-mcp:"
+echo "    TELEGRAM_API_ID            — required by telegram-mcp"
+echo "    TELEGRAM_API_HASH          — required by telegram-mcp"
+echo "    TELEGRAM_SESSION_STRING    — recommended session auth"
+echo "    TELEGRAM_SESSION_NAME      — optional if using named session file"
 echo
 
 read -rp "  Set API keys now? [y/N] " SETKEYS
@@ -143,6 +153,12 @@ if [[ "${SETKEYS,,}" == "y" ]]; then
     [GOCLAW_OPENAI_API_KEY]="OpenAI (GPT/o-series)"
     [GOCLAW_OPENROUTER_API_KEY]="OpenRouter"
     [GOCLAW_GEMINI_API_KEY]="Google Gemini"
+    [GITHUB_TOKEN]="Idea Reality MCP (GitHub token, optional)"
+    [PRODUCTHUNT_TOKEN]="Idea Reality MCP (Product Hunt token, optional)"
+    [TELEGRAM_API_ID]="Telegram MCP (API ID, optional)"
+    [TELEGRAM_API_HASH]="Telegram MCP (API hash, optional)"
+    [TELEGRAM_SESSION_STRING]="Telegram MCP (session string, optional)"
+    [TELEGRAM_SESSION_NAME]="Telegram MCP (session name, optional)"
   )
   SECRET_ARGS=()
   for KEY in "${!LLMKEYS[@]}"; do
