@@ -5,14 +5,21 @@
 #   bash scripts/fly-add-idea-reality-mcp.sh
 #
 # Optional env vars:
-#   GOCLAW_URL                     Gateway base URL (default: https://aixio.fly.dev)
+#   FLY_APP                        Fly.io app name (default: read from fly.toml, fallback: goclaw)
+#   GOCLAW_URL                     Gateway base URL (default: https://<app>.fly.dev)
 #   GOCLAW_GATEWAY_TOKEN           Gateway bearer token
 #   GOCLAW_AGENT_ID                Agent UUID to grant MCP access (optional)
 #   IDEA_REALITY_GITHUB_TOKEN      Optional token for higher GitHub API limits
 #   IDEA_REALITY_PRODUCTHUNT_TOKEN Optional token for Product Hunt deep scans
 set -euo pipefail
 
-APP="aixio"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+APP="${FLY_APP:-}"
+if [[ -z "$APP" && -f "$REPO_ROOT/fly.toml" ]]; then
+  APP=$(sed -n "s/^app *= *['\"]\([^'\"]*\)['\"]/\1/p" "$REPO_ROOT/fly.toml" | head -n 1)
+fi
+APP="${APP:-goclaw}"
 GOCLAW_URL="${GOCLAW_URL:-https://${APP}.fly.dev}"
 
 bold()  { echo -e "\033[1m$*\033[0m"; }

@@ -5,7 +5,8 @@
 #   bash scripts/fly-add-telegram-mcp.sh
 #
 # Optional env vars:
-#   GOCLAW_URL               Gateway base URL (default: https://aixio.fly.dev)
+#   FLY_APP                  Fly.io app name (default: read from fly.toml, fallback: goclaw)
+#   GOCLAW_URL               Gateway base URL (default: https://<app>.fly.dev)
 #   GOCLAW_GATEWAY_TOKEN     Gateway bearer token
 #   GOCLAW_AGENT_ID          Agent UUID to grant MCP access (optional)
 #   TELEGRAM_API_ID          Telegram API ID (required)
@@ -14,7 +15,13 @@
 #   TELEGRAM_SESSION_NAME    Telegram session name (required if TELEGRAM_SESSION_STRING is empty)
 set -euo pipefail
 
-APP="aixio"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+APP="${FLY_APP:-}"
+if [[ -z "$APP" && -f "$REPO_ROOT/fly.toml" ]]; then
+  APP=$(sed -n "s/^app *= *['\"]\([^'\"]*\)['\"]/\1/p" "$REPO_ROOT/fly.toml" | head -n 1)
+fi
+APP="${APP:-goclaw}"
 GOCLAW_URL="${GOCLAW_URL:-https://${APP}.fly.dev}"
 
 bold()  { echo -e "\033[1m$*\033[0m"; }

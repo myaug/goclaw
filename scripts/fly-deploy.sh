@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
-# fly-deploy.sh — Build and deploy aixio to Fly.io.
+# fly-deploy.sh — Build and deploy the app to Fly.io.
 # Run after `fly-setup.sh` has completed.
 #
 # Usage:
 #   bash scripts/fly-deploy.sh           # auto-detect version from git tags
 #   VERSION=1.2.3 bash scripts/fly-deploy.sh
+#
+# Optional env vars:
+#   FLY_APP     — Fly.io app name (default: read from fly.toml, fallback: goclaw)
 set -euo pipefail
 
-APP="aixio"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+APP="${FLY_APP:-}"
+if [[ -z "$APP" && -f "$REPO_ROOT/fly.toml" ]]; then
+  APP=$(sed -n "s/^app *= *['\"]\([^'\"]*\)['\"]/\1/p" "$REPO_ROOT/fly.toml" | head -n 1)
+fi
+APP="${APP:-goclaw}"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 bold()  { echo -e "\033[1m$*\033[0m"; }

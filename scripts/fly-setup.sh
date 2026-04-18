@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
-# fly-setup.sh — One-time setup of the aixio app on Fly.io.
+# fly-setup.sh — One-time setup of the Fly.io app.
 # Run this once before the first deploy.
 #
 # Usage:
 #   bash scripts/fly-setup.sh
 #
 # Optional env vars:
+#   FLY_APP     — Fly.io app name (default: read from fly.toml, fallback: goclaw)
 #   FLY_REGION  — Fly.io region (default: sin = Singapore)
+#   GOCLAW_ALLOWED_ORIGINS — CORS origins (default: https://<app>.fly.dev)
 set -euo pipefail
 
-APP="aixio"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+APP="${FLY_APP:-}"
+if [[ -z "$APP" && -f "$REPO_ROOT/fly.toml" ]]; then
+  APP=$(sed -n "s/^app *= *['\"]\([^'\"]*\)['\"]/\1/p" "$REPO_ROOT/fly.toml" | head -n 1)
+fi
+APP="${APP:-goclaw}"
 REGION="${FLY_REGION:-sin}"
+ALLOWED_ORIGINS="${GOCLAW_ALLOWED_ORIGINS:-https://${APP}.fly.dev}"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 red()    { echo -e "\033[0;31m$*\033[0m"; }
@@ -113,6 +122,7 @@ SECRET_ARGS=(
   "GOCLAW_POSTGRES_DSN=$POSTGRES_DSN"
   "GOCLAW_GATEWAY_TOKEN=$GATEWAY_TOKEN"
   "GOCLAW_ENCRYPTION_KEY=$ENCRYPTION_KEY"
+  "GOCLAW_ALLOWED_ORIGINS=$ALLOWED_ORIGINS"
 )
 if [[ -n "$REDIS_DSN" ]]; then
   SECRET_ARGS+=("GOCLAW_REDIS_DSN=$REDIS_DSN")
