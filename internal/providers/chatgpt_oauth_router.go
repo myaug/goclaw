@@ -111,7 +111,11 @@ func (p *ChatGPTOAuthRouter) call(ctx context.Context, fn func(Provider) (*ChatR
 			return resp, nil
 		}
 		lastErr = callErr
-		if !IsRetryableError(callErr) || i == len(ordered)-1 {
+		// For pool failover, try every candidate regardless of error type —
+		// 401/403 (token expired/revoked) and 402 (billing) are especially
+		// important to route around in a ChatGPT OAuth pool.
+		// Only stop early if the context itself is cancelled/timed-out.
+		if ctx.Err() != nil || i == len(ordered)-1 {
 			return nil, callErr
 		}
 		slog.Warn("chatgpt_oauth router failover",
