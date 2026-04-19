@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -150,6 +151,44 @@ func (ts *DBTokenSource) RouteEligibility(ctx context.Context) providers.RouteEl
 func (ts *DBTokenSource) refreshRouteEligibility() {
 	ctx := store.WithTenantID(context.Background(), ts.tenantID)
 	ts.fetchAndCacheEligibility(ctx)
+}
+
+// NotifyCallFailure implements providers.RouteEligibilityNotifier.
+// Immediately updates the eligibility cache when a call fails with a known HTTP
+// error code, so the round-robin router skips this provider on subsequent
+// requests without waiting for the 20-second TTL to expire.
+//
+// 429 (rate-limit / quota): demotes to unknown so healthy providers are tried
+// first; triggers a background refresh to determine the true quota state.
+// 401/403 (auth failure): marks blocked so the provider is excluded entirely.
+// 402 (billing): marks blocked with billing reason.
+func (ts *DBTokenSource) NotifyCallFailure(err error) {
+	var httpErr *providers.HTTPError
+	if !errors.As(err, &httpErr) {
+		return
+	}
+	var newEligibility providers.RouteEligibility
+	switch httpErr.Status {
+	case 429:
+		newEligibility = providers.RouteEligibility{Class: providers.RouteEligibilityUnknown, Reason: "retry_later"}
+	case 401, 403:
+		newEligibility = providers.RouteEligibility{Class: providers.RouteEligibilityBlocked, Reason: "reauth"}
+	case 402:
+		newEligibility = providers.RouteEligibility{Class: providers.RouteEligibilityBlocked, Reason: "billing"}
+	default:
+		return
+	}
+	ts.mu.Lock()
+	ts.cachedRouteEligibility = newEligibility
+	ts.cachedRouteEligibilityAt = time.Now()
+	ts.mu.Unlock()
+	// Trigger an async refresh to get the accurate eligibility state.
+	if ts.refreshingEligibility.CompareAndSwap(false, true) {
+		go func() {
+			defer ts.refreshingEligibility.Store(false)
+			ts.refreshRouteEligibility()
+		}()
+	}
 }
 
 func (ts *DBTokenSource) fetchAndCacheEligibility(ctx context.Context) providers.RouteEligibility {

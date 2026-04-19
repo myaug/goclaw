@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# fly-setup.sh — One-time setup of the Fly.io app.
+# Run this once before the first deploy.
+#
+# Usage:
+#   bash scripts/fly-setup.sh
+#
+# Optional env vars:
+#   FLY_APP     — Fly.io app name (default: read from fly.toml, fallback: goclaw)
+#   FLY_REGION  — Fly.io region (default: sin = Singapore)
+#   GOCLAW_ALLOWED_ORIGINS — CORS origins (default: https://<app>.fly.dev)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+APP="${FLY_APP:-}"
+if [[ -z "$APP" && -f "$REPO_ROOT/fly.toml" ]]; then
+  APP=$(sed -n "s/^app *= *['\"]\([^'\"]*\)['\"]/\1/p" "$REPO_ROOT/fly.toml" | head -n 1)
+fi
+APP="${APP:-goclaw}"
+REGION="${FLY_REGION:-sin}"
+ALLOWED_ORIGINS="${GOCLAW_ALLOWED_ORIGINS:-https://${APP}.fly.dev}"
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+red()    { echo -e "\033[0;31m$*\033[0m"; }
+green()  { echo -e "\033[0;32m$*\033[0m"; }
+yellow() { echo -e "\033[0;33m$*\033[0m"; }
+bold()   { echo -e "\033[1m$*\033[0m"; }
+
+step() { echo; bold "==> $*"; }
+ok()   { green "    ✓ $*"; }
+warn() { yellow "    ! $*"; }
+
+# ── Pre-flight checks ────────────────────────────────────────────────────────
+if ! command -v flyctl &>/dev/null; then
+  red "[!] flyctl not found."
+  echo "    Install: https://fly.io/docs/hands-on/install-flyctl/"
+  exit 1
+fi
+
+if ! command -v openssl &>/dev/null; then
+  red "[!] openssl not found (needed to generate secure tokens)."
+  exit 1
+fi
+
+step "Checking Fly.io auth"
+flyctl auth whoami || {
+  red "[!] Not logged in. Run: flyctl auth login"
+  exit 1
+}
+
+# ── Create app ───────────────────────────────────────────────────────────────
+step "Creating Fly.io app '$APP'"
+if flyctl status --app "$APP" &>/dev/null; then
+  ok "App already exists, skipping creation."
+else
+  flyctl apps create "$APP"
+  ok "App created."
+fi
+
+# ── Create persistent volume ─────────────────────────────────────────────────
+step "Creating persistent volume in region '$REGION'"
+
+VOL="goclaw_data"
+if flyctl volumes list --app "$APP" 2>/dev/null | grep -q "$VOL"; then
+  ok "Volume '$VOL' already exists, skipping."
+else
+  flyctl volumes create "$VOL" \
+    --app "$APP" \
+    --region "$REGION" \
+    --size 2 \
+    --yes
+  ok "Volume '$VOL' created (2 GB)."
+fi
+
+# ── Collect secrets ──────────────────────────────────────────────────────────
+step "Collecting required secrets"
+echo
+echo "  Supabase PostgreSQL connection string."
+echo "  Session pooler (port 6543) is recommended for production; direct (5432) also works."
+echo "  Example (session pooler):"
+echo "    postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres?sslmode=require"
+echo "  Example (direct connection):"
+echo "    postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres?sslmode=require"
+echo
+read -rsp "  Paste your Supabase DSN: " POSTGRES_DSN
+echo
+
+if [[ -z "$POSTGRES_DSN" ]]; then
+  red "[!] Supabase DSN cannot be empty."
+  exit 1
+fi
+
+echo
+echo "  Optional: Redis connection string."
+echo "  Use rediss:// (TLS) for Redis Cloud public endpoints."
+echo "  Leave blank to use the gateway's in-memory cache."
+echo "  Example: rediss://default:[password]@[host]:[port]"
+echo
+read -rsp "  Paste your Redis DSN (leave blank to skip): " REDIS_DSN
+echo
+
+# ── Generate secure tokens ───────────────────────────────────────────────────
+GATEWAY_TOKEN=$(openssl rand -hex 32)
+ENCRYPTION_KEY=$(openssl rand -hex 32)
+
+echo
+bold "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+bold "  Generated credentials — SAVE THESE NOW"
+bold "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  GOCLAW_GATEWAY_TOKEN  = $GATEWAY_TOKEN"
+echo "  GOCLAW_ENCRYPTION_KEY = $ENCRYPTION_KEY"
+bold "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Store these securely (password manager, etc.)."
+echo "  GATEWAY_TOKEN is required by clients; ENCRYPTION_KEY decrypts stored API keys."
+echo
+
+# ── Push secrets to Fly.io ──────────────────────────────────────────────────
+step "Setting Fly.io secrets"
+
+SECRET_ARGS=(
+  "GOCLAW_POSTGRES_DSN=$POSTGRES_DSN"
+  "GOCLAW_GATEWAY_TOKEN=$GATEWAY_TOKEN"
+  "GOCLAW_ENCRYPTION_KEY=$ENCRYPTION_KEY"
+  "GOCLAW_ALLOWED_ORIGINS=$ALLOWED_ORIGINS"
+)
+if [[ -n "$REDIS_DSN" ]]; then
+  SECRET_ARGS+=("GOCLAW_REDIS_DSN=$REDIS_DSN")
+fi
+
+flyctl secrets set "${SECRET_ARGS[@]}" --app "$APP"
+
+ok "Secrets stored."
+if [[ -z "$REDIS_DSN" ]]; then
+  warn "GOCLAW_REDIS_DSN not set; the gateway will use in-memory cache."
+fi
+
+# ── Optional LLM API keys ────────────────────────────────────────────────────
+step "Optional: LLM provider API keys"
+echo "  You can set these now or later with: flyctl secrets set KEY=VALUE --app $APP"
+echo
+echo "  Common keys:"
+echo "    GOCLAW_ANTHROPIC_API_KEY   — Claude (Anthropic)"
+echo "    GOCLAW_OPENAI_API_KEY      — GPT / o-series"
+echo "    GOCLAW_OPENROUTER_API_KEY  — OpenRouter"
+echo "    GOCLAW_GEMINI_API_KEY      — Gemini (Google)"
+echo
+
+read -rp "  Set API keys now? [y/N] " SETKEYS
+if [[ "${SETKEYS,,}" == "y" ]]; then
+  declare -A LLMKEYS=(
+    [GOCLAW_ANTHROPIC_API_KEY]="Anthropic (Claude)"
+    [GOCLAW_OPENAI_API_KEY]="OpenAI (GPT/o-series)"
+    [GOCLAW_OPENROUTER_API_KEY]="OpenRouter"
+    [GOCLAW_GEMINI_API_KEY]="Google Gemini"
+  )
+  SECRET_ARGS=()
+  for KEY in "${!LLMKEYS[@]}"; do
+    read -rsp "  ${LLMKEYS[$KEY]} — $KEY (leave blank to skip): " VAL
+    echo
+    [[ -n "$VAL" ]] && SECRET_ARGS+=("$KEY=$VAL")
+  done
+  if [[ ${#SECRET_ARGS[@]} -gt 0 ]]; then
+    flyctl secrets set "${SECRET_ARGS[@]}" --app "$APP"
+    ok "LLM keys stored."
+  fi
+fi
+
+# ── Done ─────────────────────────────────────────────────────────────────────
+echo
+green "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+green "  Setup complete!"
+green "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Next step: deploy the app"
+echo "    bash scripts/fly-deploy.sh"
+echo
+echo "  After deploy, your gateway will be at:"
+echo "    https://$APP.fly.dev"
+echo
+echo "  To add more secrets later:"
+echo "    flyctl secrets set KEY=VALUE --app $APP"
+echo
