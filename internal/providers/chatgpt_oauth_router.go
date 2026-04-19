@@ -111,6 +111,12 @@ func (p *ChatGPTOAuthRouter) call(ctx context.Context, fn func(Provider) (*ChatR
 			return resp, nil
 		}
 		lastErr = callErr
+		// Notify the provider about the failure so it can update its eligibility
+		// cache for future routing decisions (e.g. demote exhausted provider from
+		// the active pool without waiting for the 20-second TTL to expire).
+		if notifier, ok := provider.(RouteEligibilityNotifier); ok {
+			notifier.NotifyCallFailure(callErr)
+		}
 		// For pool failover, try every candidate regardless of error type —
 		// 401/403 (token expired/revoked) and 402 (billing) are especially
 		// important to route around in a ChatGPT OAuth pool.

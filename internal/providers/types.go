@@ -48,6 +48,14 @@ type RouteEligibilityAware interface {
 	RouteEligibility(ctx context.Context) RouteEligibility
 }
 
+// RouteEligibilityNotifier allows a provider to learn about call failures so it
+// can update its eligibility cache before the TTL expires. When implemented,
+// ChatGPTOAuthRouter notifies after each failed attempt so the round-robin router
+// skips the provider on subsequent requests instead of waiting for the TTL.
+type RouteEligibilityNotifier interface {
+	NotifyCallFailure(err error)
+}
+
 // Provider is the interface all LLM providers must implement.
 type Provider interface {
 	// Chat sends messages to the LLM and returns a response.
