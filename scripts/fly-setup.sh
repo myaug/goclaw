@@ -8,6 +8,7 @@
 # Optional env vars:
 #   FLY_APP     — Fly.io app name (default: read from fly.toml, fallback: goclaw)
 #   FLY_REGION  — Fly.io region (default: sin = Singapore)
+#   FLY_VOLUME_SIZE_GB — Persistent volume size in GB (default: 1)
 #   GOCLAW_ALLOWED_ORIGINS — CORS origins (default: https://<app>.fly.dev)
 set -euo pipefail
 
@@ -19,6 +20,7 @@ if [[ -z "$APP" && -f "$REPO_ROOT/fly.toml" ]]; then
 fi
 APP="${APP:-goclaw}"
 REGION="${FLY_REGION:-sin}"
+VOLUME_SIZE_GB="${FLY_VOLUME_SIZE_GB:-1}"
 ALLOWED_ORIGINS="${GOCLAW_ALLOWED_ORIGINS:-https://${APP}.fly.dev}"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -68,9 +70,9 @@ else
   flyctl volumes create "$VOL" \
     --app "$APP" \
     --region "$REGION" \
-    --size 2 \
+    --size "$VOLUME_SIZE_GB" \
     --yes
-  ok "Volume '$VOL' created (2 GB)."
+  ok "Volume '$VOL' created (${VOLUME_SIZE_GB} GB)."
 fi
 
 # ── Collect secrets ──────────────────────────────────────────────────────────

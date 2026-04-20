@@ -17,6 +17,11 @@ if [[ -z "$APP" && -f "$REPO_ROOT/fly.toml" ]]; then
   APP=$(sed -n "s/^app *= *['\"]\([^'\"]*\)['\"]/\1/p" "$REPO_ROOT/fly.toml" | head -n 1)
 fi
 APP="${APP:-goclaw}"
+FULL_SKILLS="unknown"
+if [[ -f "$REPO_ROOT/fly.toml" ]]; then
+  FULL_SKILLS=$(sed -n "s/^ *ENABLE_FULL_SKILLS *= *\"\([^\"]*\)\"/\1/p" "$REPO_ROOT/fly.toml" | head -n 1)
+  FULL_SKILLS="${FULL_SKILLS:-unknown}"
+fi
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 bold()  { echo -e "\033[1m$*\033[0m"; }
@@ -63,8 +68,9 @@ echo "    All required secrets present."
 
 # ── Deploy ────────────────────────────────────────────────────────────────────
 step "Deploying $APP (version: $VERSION)"
-echo "    Build args: ENABLE_REDIS=true  ENABLE_EMBEDUI=true  ENABLE_FULL_SKILLS=true"
+echo "    Build args (from fly.toml): ENABLE_REDIS=true  ENABLE_EMBEDUI=true  ENABLE_FULL_SKILLS=${FULL_SKILLS}"
 echo "    Runtime: Redis DSN optional (falls back to in-memory cache)"
+echo "    Note: if http_service is configured with auto-stop, first request after idle may be slower (cold start)."
 echo "    Remote build: yes"
 echo
 
