@@ -97,6 +97,15 @@ func (p *CodexProvider) RouteEligibility(ctx context.Context) RouteEligibility {
 	return RouteEligibility{Class: RouteEligibilityHealthy}
 }
 
+// NotifyCallFailure implements RouteEligibilityNotifier. Delegates to the token
+// source if it supports failure notifications, enabling immediate eligibility
+// cache update without waiting for the TTL to expire.
+func (p *CodexProvider) NotifyCallFailure(err error) {
+	if notifier, ok := p.tokenSource.(RouteEligibilityNotifier); ok {
+		notifier.NotifyCallFailure(err)
+	}
+}
+
 func (p *CodexProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	// Codex Responses API requires stream=true; delegate to ChatStream with no chunk handler.
 	return p.ChatStream(ctx, req, nil)
