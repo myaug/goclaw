@@ -1,0 +1,54 @@
+app = 'aixio'
+primary_region = 'sin'
+
+[build]
+  [build.args]
+    # Compile Redis cache support; runtime falls back to in-memory if no DSN is set.
+    ENABLE_REDIS = "true"
+    # Embed the React web UI into the binary
+    ENABLE_EMBEDUI = "true"
+    # Cost-saving default for small/free deployments.
+    # Set true when you want all runtime deps pre-installed in the image.
+    ENABLE_FULL_SKILLS = "true"
+
+# Non-sensitive environment variables.
+# Sensitive values (DSNs, tokens, keys) are set via: flyctl secrets set ...
+[env]
+  # Persist config edits made via the dashboard/API on the mounted data volume.
+  GOCLAW_CONFIG = "/app/data/config.json"
+  # Allow connections from the fly.io domain and any custom domain you add.
+  # Separate multiple origins with commas, or set "*" to allow all.
+  GOCLAW_ALLOWED_ORIGINS = "https://aixio.fly.dev"
+  # Persist user-installed global skills on the mounted data volume.
+  GOCLAW_SKILLS_DIR = "/app/data/skills"
+  # Workspace is stored inside the single data volume to avoid needing two mounts.
+  GOCLAW_WORKSPACE = "/app/data/workspace"
+
+[http_service]
+  internal_port = 18790
+  force_https = true
+  # Cost-saving default: allow scale-to-zero.
+  # If you need always-on cron/webhooks, switch to auto_stop_machines="off" and min_machines_running=1.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  # Increase memory/CPUs as needed. 1 GB is sufficient for a lightly-loaded gateway.
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Single persistent volume for all data: config, runtime packages, agent workspace, etc.
+[[mounts]]
+  source = "goclaw_data"
+  destination = "/app/data"
+  # Start small for free/cost-saving plans; can be expanded later.
+  initial_size = "1gb"
