@@ -9,7 +9,7 @@ primary_region = 'sin'
     ENABLE_EMBEDUI = "true"
     # Cost-saving default for small/free deployments.
     # Set true when you want all runtime deps pre-installed in the image.
-    ENABLE_FULL_SKILLS = "true"
+    ENABLE_FULL_SKILLS = "false"
 
 # Non-sensitive environment variables.
 # Sensitive values (DSNs, tokens, keys) are set via: flyctl secrets set ...
