@@ -711,6 +711,13 @@ func runGateway() {
 		}
 	}
 
+	// Channel manager. Created before the HTTP handlers are wired: the webhook
+	// message handler (POST /v1/webhooks/message) is only mounted when
+	// deps.channelMgr is set, so creating it later left that route unmounted (404).
+	channelMgr := channels.NewManager(msgBus)
+	channelMgr.SetSystemMessages(systemmessages.NewResolver(cfg))
+	deps.channelMgr = channelMgr
+
 	// Wire all server.Set*Handler() calls via extracted helper.
 	deps.wireHTTPHandlersOnServer(
 		httpHandlers{
@@ -804,10 +811,6 @@ func runGateway() {
 		})
 	}
 
-	// Channel manager
-	channelMgr := channels.NewManager(msgBus)
-	channelMgr.SetSystemMessages(systemmessages.NewResolver(cfg))
-	deps.channelMgr = channelMgr
 	server.SetChannelManager(channelMgr)
 
 	// Wire channel member resolver into permission grant paths (WS + HTTP) so
