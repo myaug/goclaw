@@ -62,6 +62,8 @@
       "urlRequired": "URL is required for SSE/HTTP transport",
       "connectionFailed": "Connection failed"
     },
+    "allowEmbeddedDocuments": "Allow Embedded Documents",
+    "allowEmbeddedDocumentsHint": "Let this server return PDFs (EmbeddedResource, application/pdf) that are stored in the conversation for read_document. Enable only for trusted servers.",
     "requireUserCredentials": "Require User Credentials",
     "requireUserCredentialsHint": "Each user must configure their own credentials. Server is disabled for users without personal credentials.",
     "toolHints": "AI Agent Hints (Optional)",

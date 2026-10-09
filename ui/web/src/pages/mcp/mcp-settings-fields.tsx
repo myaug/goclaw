@@ -35,6 +35,7 @@ export function McpSettingsFields({ form, isEditing }: McpSettingsFieldsProps) {
   const name = watch("name");
   const enabled = watch("enabled");
   const requireUserCreds = watch("requireUserCreds");
+  const allowEmbeddedDocuments = watch("allowEmbeddedDocuments");
   const toolHintsGlobal = watch("toolHintsGlobal");
   const toolHintsTools = watch("toolHintsTools") as Record<string, string>;
   const oauthEnabled = watch("oauthEnabled");
@@ -270,6 +271,18 @@ export function McpSettingsFields({ form, isEditing }: McpSettingsFieldsProps) {
           <Label htmlFor="mcp-require-creds">{t("form.requireUserCredentials")}</Label>
         </div>
         <p className="text-xs text-muted-foreground pl-9">{t("form.requireUserCredentialsHint")}</p>
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="mcp-allow-embedded-documents"
+            checked={allowEmbeddedDocuments}
+            onCheckedChange={(v) => setValue("allowEmbeddedDocuments", v)}
+          />
+          <Label htmlFor="mcp-allow-embedded-documents">{t("form.allowEmbeddedDocuments")}</Label>
+        </div>
+        <p className="text-xs text-muted-foreground pl-9">{t("form.allowEmbeddedDocumentsHint")}</p>
       </div>
     </>
   );

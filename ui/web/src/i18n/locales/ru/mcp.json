@@ -62,6 +62,8 @@
       "urlRequired": "URL обязателен для транспорта SSE/HTTP",
       "connectionFailed": "Подключение не удалось"
     },
+    "allowEmbeddedDocuments": "Разрешить встроенные документы",
+    "allowEmbeddedDocumentsHint": "Разрешить серверу возвращать PDF (EmbeddedResource, application/pdf), которые сохраняются в беседе для read_document. Включайте только для доверенных серверов.",
     "requireUserCredentials": "Требовать учётные данные пользователя",
     "requireUserCredentialsHint": "Каждый пользователь должен настроить свои учётные данные. Сервер отключён для пользователей без личных учётных данных.",
     "toolHints": "Подсказки для ИИ-агента (необязательно)",

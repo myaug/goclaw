@@ -27,6 +27,12 @@ type Result struct {
 	// task results instead of relying on the LLM's summary response.
 	Deliverable string `json:"-"`
 
+	// DocumentRefs holds documents this tool stored in the workspace for the
+	// agent to read (not for delivery to the user). The agent loop attaches
+	// them to the tool message so read_document(media_id) keeps resolving them
+	// on later turns.
+	DocumentRefs []providers.MediaRef `json:"-"`
+
 	// Usage holds token usage from tools that make internal LLM calls (e.g. read_image).
 	// When set, the agent loop records these on the tool span for tracing.
 	Usage    *providers.Usage `json:"-"`

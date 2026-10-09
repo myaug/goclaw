@@ -416,6 +416,11 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 	// media sends can coordinate within this run.
 	ctx = tools.WithDeliveredMedia(ctx, tools.NewDeliveredMedia())
 
+	// Inject a fresh registry for documents tools store during this run (e.g.
+	// MCP embedded PDFs) so read_document(media_id) can resolve them before
+	// they are persisted into session history.
+	ctx = tools.WithRunDocuments(ctx, tools.NewRunDocuments())
+
 	// Security: truncate oversized user messages gracefully (feed truncation notice into LLM)
 	maxChars := l.maxMessageChars
 	if maxChars <= 0 {

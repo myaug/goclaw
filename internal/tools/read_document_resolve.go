@@ -26,7 +26,7 @@ func (t *ReadDocumentTool) resolveDocumentFile(ctx context.Context, mediaID, doc
 		return p, mimeFromDocExt(filepath.Ext(p)), nil
 	}
 
-	refs := MediaDocRefsFromCtx(ctx)
+	refs := availableDocumentRefs(ctx)
 	if len(refs) == 0 {
 		return "", "", fmt.Errorf("no documents available in this conversation. The user may not have sent a document.")
 	}

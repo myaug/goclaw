@@ -13,6 +13,9 @@ export const mcpFormSchema = z.object({
   timeout: z.number().min(1),
   enabled: z.boolean(),
   requireUserCreds: z.boolean(),
+  // Lets the server hand PDFs to the agent via EmbeddedResource blobs in tool
+  // results. Persisted under settings.allow_embedded_documents (default off).
+  allowEmbeddedDocuments: z.boolean(),
   // Admin-authored description hints appended to MCP tool descriptions so the
   // LLM sees server-specific quirks. Persisted under settings.tool_hints.
   toolHintsGlobal: z.string(),

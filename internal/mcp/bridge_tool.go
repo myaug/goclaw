@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	mcpclient "github.com/mark3labs/mcp-go/client"
 	mcpgo "github.com/mark3labs/mcp-go/mcp"
+	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 )
@@ -54,6 +55,10 @@ type BridgeTool struct {
 	// the server reset its session lifecycle. Optional — nil falls back to
 	// "connected=false + wait for health loop". Wired via WithForceReconnect.
 	forceReconnect func(reason string)
+	// allowEmbeddedDocuments lets PDF EmbeddedResource blobs in results be
+	// stored for read_document. Wired via WithEmbeddedDocuments from the
+	// server's allow_embedded_documents setting; default false.
+	allowEmbeddedDocuments bool
 }
 
 // NewBridgeTool creates a BridgeTool from an MCP Tool definition.
@@ -322,10 +327,19 @@ func (t *BridgeTool) Execute(ctx context.Context, args map[string]any) *tools.Re
 		return tools.ErrorResult(msg)
 	}
 
+	// Embedded PDFs (opt-in per server) are stored only for successful
+	// results, after the error checks above.
+	var docRefs []providers.MediaRef
+	if t.allowEmbeddedDocuments {
+		text, docRefs = t.convertResultContent(ctx, result)
+	}
+
 	// Wrap MCP tool results as external/untrusted content to prevent prompt injection.
 	// MCP servers may be third-party and return adversarial content.
 	wrapped := wrapMCPContent(text, t.serverName, t.toolName)
-	return tools.NewResult(wrapped)
+	res := tools.NewResult(wrapped)
+	res.DocumentRefs = docRefs
+	return res
 }
 
 // inputSchemaToMap converts mcp.ToolInputSchema to the map format expected by tools.Tool.Parameters().

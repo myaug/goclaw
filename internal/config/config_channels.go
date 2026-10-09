@@ -525,6 +525,9 @@ type MCPServerConfig struct {
 	Enabled    *bool             `json:"enabled,omitempty"`     // default true
 	ToolPrefix string            `json:"tool_prefix,omitempty"` // prefix for tool names (avoids collisions)
 	TimeoutSec int               `json:"timeout_sec,omitempty"` // per-tool-call timeout in seconds (default 60)
+	// AllowEmbeddedDocuments lets this server return PDFs as EmbeddedResource
+	// blobs that are stored for read_document. Default false (untrusted).
+	AllowEmbeddedDocuments bool `json:"allow_embedded_documents,omitempty"`
 }
 
 // IsEnabled returns whether this MCP server is enabled (default true).

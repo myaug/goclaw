@@ -62,6 +62,8 @@
       "urlRequired": "URL là bắt buộc cho giao thức SSE/HTTP",
       "connectionFailed": "Kết nối thất bại"
     },
+    "allowEmbeddedDocuments": "Cho phép tài liệu đính kèm",
+    "allowEmbeddedDocumentsHint": "Cho phép server trả về file PDF (EmbeddedResource, application/pdf) được lưu vào hội thoại để đọc bằng read_document. Chỉ bật cho server tin cậy.",
     "requireUserCredentials": "Yêu cầu Credentials riêng",
     "requireUserCredentialsHint": "Mỗi user phải cấu hình credentials riêng. Server bị vô hiệu cho user chưa có credentials.",
     "toolHints": "Gợi ý cho AI Agent (Tùy chọn)",

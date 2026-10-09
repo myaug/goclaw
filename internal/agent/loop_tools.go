@@ -161,6 +161,9 @@ func (l *Loop) processToolResult(
 		ToolName:   tc.Name,
 		IsError:    result.IsError,
 	}
+	if len(result.DocumentRefs) > 0 {
+		toolMsg.MediaRefs = append([]providers.MediaRef(nil), result.DocumentRefs...)
+	}
 
 	action = toolResultContinue
 

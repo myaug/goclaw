@@ -62,6 +62,7 @@ export function MCPFormDialog({ open, onOpenChange, server, onSubmit, onTest, on
       timeout: 60,
       enabled: true,
       requireUserCreds: false,
+      allowEmbeddedDocuments: false,
       toolHintsGlobal: "",
       toolHintsTools: {},
       oauthEnabled: false,
@@ -104,6 +105,7 @@ export function MCPFormDialog({ open, onOpenChange, server, onSubmit, onTest, on
         // fall back to the legacy settings entry so cached responses from
         // pre-upgrade backends still render the checkbox with the right value.
         requireUserCreds: server?.require_user_credentials ?? server?.settings?.require_user_credentials ?? false,
+        allowEmbeddedDocuments: server?.settings?.allow_embedded_documents === true,
         toolHintsGlobal: server?.settings?.tool_hints?.global ?? "",
         toolHintsTools: server?.settings?.tool_hints?.tools ?? {},
         oauthEnabled: oauth?.auth_type === "oauth",
@@ -164,6 +166,9 @@ export function MCPFormDialog({ open, onOpenChange, server, onSubmit, onTest, on
     const settings: NonNullable<MCPServerInput["settings"]> = {
       require_user_credentials: data.requireUserCreds,
     };
+    if (data.allowEmbeddedDocuments) {
+      settings.allow_embedded_documents = true;
+    }
     if (hasHints) {
       settings.tool_hints = {
         ...(trimmedGlobal ? { global: trimmedGlobal } : {}),

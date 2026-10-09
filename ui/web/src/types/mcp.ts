@@ -12,6 +12,8 @@ export interface MCPOAuthSettings {
 
 export interface MCPServerSettings {
   require_user_credentials?: boolean;
+  /** Store PDF EmbeddedResource blobs from tool results for read_document. */
+  allow_embedded_documents?: boolean;
   tool_hints?: {
     global?: string;
     tools?: Record<string, string>;

@@ -228,10 +228,11 @@ func (m *Manager) Start(ctx context.Context) error {
 			errs = append(errs, fmt.Sprintf("%s: %v", name, err))
 			continue
 		}
-		// Config-path servers have no DB-backed Settings, so no tool hints.
+		// Config-path servers have no DB-backed Settings, so no tool hints;
+		// allow_embedded_documents comes from the config entry itself.
 		// Also no grant-based tool filtering (allow/deny are nil) — config
 		// trust model is that the operator gates which servers are enabled.
-		if err := m.connectServer(ctx, name, cfg.Transport, cfg.Command, cfg.Args, cfg.Env, cfg.URL, headers, cfg.ToolPrefix, cfg.TimeoutSec, uuid.Nil, ToolHints{}, nil, nil); err != nil {
+		if err := m.connectServer(ctx, name, cfg.Transport, cfg.Command, cfg.Args, cfg.Env, cfg.URL, headers, cfg.ToolPrefix, cfg.TimeoutSec, uuid.Nil, BridgeSettings{AllowEmbeddedDocuments: cfg.AllowEmbeddedDocuments}, nil, nil); err != nil {
 			slog.Warn("mcp.server.connect_failed", "server", name, "error", err)
 			errs = append(errs, fmt.Sprintf("%s: %v", name, err))
 		} else {
@@ -409,19 +410,19 @@ func (m *Manager) resolveServerCredentials(ctx context.Context, info store.MCPAc
 // reach the registry (and thus never reach the LLM).
 func (m *Manager) connectAndFilter(ctx context.Context, rs *resolvedServer) error {
 	srv := rs.info.Server
-	hints := ParseToolHints(srv.Settings)
+	bs := ParseBridgeSettings(srv.Settings)
 
 	if m.pool != nil && !rs.hasUserCreds {
 		// Pool mode: acquire shared connection, create per-agent BridgeTools
 		tid := store.TenantIDFromContext(ctx)
 		return m.connectViaPool(ctx, tid, srv.Name, srv.Transport, srv.Command,
-			rs.args, rs.env, srv.URL, rs.headers, srv.ToolPrefix, srv.TimeoutSec, srv.ID, hints,
+			rs.args, rs.env, srv.URL, rs.headers, srv.ToolPrefix, srv.TimeoutSec, srv.ID, bs,
 			rs.info.ToolAllow, rs.info.ToolDeny)
 	}
 	// Per-agent mode: create per-agent connection
 	return m.connectServer(ctx, srv.Name, srv.Transport, srv.Command,
 		rs.args, rs.env, srv.URL, rs.headers,
-		srv.ToolPrefix, srv.TimeoutSec, srv.ID, hints,
+		srv.ToolPrefix, srv.TimeoutSec, srv.ID, bs,
 		rs.info.ToolAllow, rs.info.ToolDeny)
 }
 
@@ -997,6 +998,41 @@ func ParseToolHints(settings json.RawMessage) ToolHints {
 	}
 	_ = json.Unmarshal(settings, &s)
 	return s.ToolHints
+}
+
+// BridgeSettings groups the per-server options applied to every BridgeTool
+// created for a server.
+type BridgeSettings struct {
+	Hints ToolHints
+	// AllowEmbeddedDocuments lets the server hand PDFs to the agent via
+	// EmbeddedResource blobs in tool results (see bridge_embedded_documents.go).
+	// Default false: an untrusted server must not be able to drop files into
+	// conversations.
+	AllowEmbeddedDocuments bool
+}
+
+// ParseBridgeSettings extracts all BridgeTool options from an MCP server's
+// Settings JSONB. Malformed or missing settings yield the zero value.
+func ParseBridgeSettings(settings json.RawMessage) BridgeSettings {
+	return BridgeSettings{
+		Hints:                  ParseToolHints(settings),
+		AllowEmbeddedDocuments: ParseAllowEmbeddedDocuments(settings),
+	}
+}
+
+// ParseAllowEmbeddedDocuments reports whether Settings.allow_embedded_documents
+// is the JSON boolean true. Anything else (missing, malformed, a string) is false.
+func ParseAllowEmbeddedDocuments(settings json.RawMessage) bool {
+	if len(settings) == 0 {
+		return false
+	}
+	var s struct {
+		AllowEmbeddedDocuments bool `json:"allow_embedded_documents"`
+	}
+	if err := json.Unmarshal(settings, &s); err != nil {
+		return false
+	}
+	return s.AllowEmbeddedDocuments
 }
 
 // HintFor returns the per-tool hint for toolName, or empty string if none.

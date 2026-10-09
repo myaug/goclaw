@@ -62,6 +62,8 @@
       "urlRequired": "SSE/HTTP 传输协议需要提供 URL",
       "connectionFailed": "连接失败"
     },
+    "allowEmbeddedDocuments": "允许嵌入文档",
+    "allowEmbeddedDocumentsHint": "允许此服务器返回 PDF（EmbeddedResource，application/pdf），并保存到会话中供 read_document 读取。仅对可信服务器启用。",
     "requireUserCredentials": "要求用户凭据",
     "requireUserCredentialsHint": "每个用户必须配置自己的凭据。未设置凭据的用户将无法使用此服务器。",
     "toolHints": "AI 智能体提示（可选）",

@@ -62,6 +62,8 @@
       "urlRequired": "SSE/HTTP 전송에는 URL이 필요합니다",
       "connectionFailed": "연결 실패"
     },
+    "allowEmbeddedDocuments": "임베디드 문서 허용",
+    "allowEmbeddedDocumentsHint": "이 서버가 PDF(EmbeddedResource, application/pdf)를 반환하면 대화에 저장되어 read_document로 읽을 수 있습니다. 신뢰할 수 있는 서버에만 사용하세요.",
     "requireUserCredentials": "사용자 자격 증명 필요",
     "requireUserCredentialsHint": "각 사용자가 자신의 자격 증명을 설정해야 합니다. 개인 자격 증명이 없는 사용자는 서버를 사용할 수 없습니다."
   },
