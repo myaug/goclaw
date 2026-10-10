@@ -170,7 +170,15 @@ func setupToolRegistry(
 	// initialised. The manager is created here so that the return value is always
 	// non-nil and downstream wiring (pool, grant-checker, etc.) can be applied
 	// unconditionally in gateway.go.
-	mcpMgr = mcpbridge.NewManager(toolsReg)
+	//
+	// It owns a private registry, NOT toolsReg: it connects every enabled server
+	// with no grant filtering, for admin tool browsing, prompt-preview metadata
+	// and tool_cache. Registering those tools into the shared registry would hand
+	// every server's tools, ungranted and without a grant re-check, to every
+	// agent (per-agent registries are cloned from toolsReg) and to the HTTP tool
+	// invoke and CLI bridge endpoints. Agents get MCP tools only from their own
+	// grant-filtered managers (internal/agent/resolver.go).
+	mcpMgr = mcpbridge.NewManager(tools.NewRegistry())
 
 	// Exec approval system — always active (deny patterns + safe bins + configurable ask mode)
 	{

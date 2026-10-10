@@ -312,7 +312,10 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 		var mcpUserCredSrvs []store.MCPAccessInfo
 		if deps.MCPStore != nil {
 			if toolsReg == deps.Tools {
-				toolsReg = deps.Tools.Clone()
+				// Start from the shared registry minus any MCP bridge tools, so the
+				// agent's MCP tools are exactly those its own grant-filtered
+				// manager registers below (see mcpbridge.CloneForAgent).
+				toolsReg = mcpbridge.CloneForAgent(deps.Tools)
 			}
 			var mcpOpts []mcpbridge.ManagerOption
 			mcpOpts = append(mcpOpts, mcpbridge.WithStore(deps.MCPStore))

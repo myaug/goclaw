@@ -413,3 +413,23 @@ func TestRegistry_TryActivateDeferred_NilActivatorAfterSet(t *testing.T) {
 		t.Error("expected false after setting nil activator")
 	}
 }
+
+func TestRegistry_UnregisterMatchingRemovesDisabledToo(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&mockTool{name: "keep"})
+	reg.Register(&mockTool{name: "drop_a"})
+	reg.Register(&mockTool{name: "drop_b"})
+	reg.Disable("drop_b")
+
+	removed := reg.UnregisterMatching(func(tool Tool) bool { return strings.HasPrefix(tool.Name(), "drop_") })
+	if len(removed) != 2 || removed[0] != "drop_a" || removed[1] != "drop_b" {
+		t.Fatalf("removed = %v, want [drop_a drop_b]", removed)
+	}
+	reg.Enable("drop_b")
+	if _, ok := reg.Get("drop_b"); ok {
+		t.Fatal("disabled tool survived and came back on Enable")
+	}
+	if _, ok := reg.Get("keep"); !ok {
+		t.Fatal("non-matching tool removed")
+	}
+}

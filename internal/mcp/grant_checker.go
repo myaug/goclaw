@@ -20,6 +20,7 @@ type GrantChecker interface {
 	// surfacing to operators in error messages. Possible reasons:
 	//   - "server_not_accessible" — no agent grant, server disabled, or revoked
 	//   - "tool_not_in_allow_list" — grant exists but tool not in tool_allow
+	//   - "tool_denied"            — grant exists but tool is in tool_deny
 	//   - "load_failed: <err>"     — store query failed (fail-closed)
 	IsAllowed(ctx context.Context, agentID uuid.UUID, userID string, serverID uuid.UUID, toolName string) (bool, string)
 }
@@ -40,6 +41,9 @@ type cacheEntry struct {
 	// non-nil empty map means "no tools allowed" (grant exists but tool_allow is empty).
 	// Absent key means "server not accessible" (no grant).
 	allowByServer map[uuid.UUID]map[string]bool
+	// denyByServer maps serverID → tool_deny set (absent or nil = nothing denied).
+	// Deny wins over allow, matching IsToolAllowed at registration time.
+	denyByServer map[uuid.UUID]map[string]bool
 }
 
 // storeGrantChecker implements GrantChecker backed by MCPServerStore.
@@ -128,10 +132,19 @@ func (gc *storeGrantChecker) loadEntry(ctx context.Context, agentID uuid.UUID, u
 
 	entry := &cacheEntry{
 		allowByServer: make(map[uuid.UUID]map[string]bool, len(accessible)),
+		denyByServer:  make(map[uuid.UUID]map[string]bool),
 	}
 
 	for _, info := range accessible {
 		serverID := info.Server.ID
+
+		if len(info.ToolDeny) > 0 {
+			denySet := make(map[string]bool, len(info.ToolDeny))
+			for _, t := range info.ToolDeny {
+				denySet[t] = true
+			}
+			entry.denyByServer[serverID] = denySet
+		}
 
 		// Build tool allow set from grant's tool_allow field
 		if len(info.ToolAllow) == 0 {
@@ -163,6 +176,17 @@ func (gc *storeGrantChecker) checkAccess(entry *cacheEntry, serverID uuid.UUID, 
 			"reason", "server_not_accessible",
 		)
 		return false, "server_not_accessible"
+	}
+
+	if entry.denyByServer[serverID][toolName] {
+		slog.Warn("security.mcp_grant_revoked_at_execute",
+			"agent", agentID,
+			"user", userID,
+			"server", serverID,
+			"tool", toolName,
+			"reason", "tool_denied",
+		)
+		return false, "tool_denied"
 	}
 
 	// nil allowSet means "all tools allowed"

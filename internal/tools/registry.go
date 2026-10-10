@@ -162,6 +162,24 @@ func (r *Registry) Unregister(name string) {
 	delete(r.tools, name)
 }
 
+// UnregisterMatching removes every registered tool for which match returns true,
+// disabled tools included, and returns the removed names.
+func (r *Registry) UnregisterMatching(match func(Tool) bool) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var removed []string
+	for name, tool := range r.tools {
+		if match(tool) {
+			delete(r.tools, name)
+			delete(r.metadata, name)
+			delete(r.disabled, name)
+			removed = append(removed, name)
+		}
+	}
+	slices.Sort(removed)
+	return removed
+}
+
 // Execute runs a tool by name with the given arguments.
 func (r *Registry) Execute(ctx context.Context, name string, args map[string]any) *Result {
 	return r.ExecuteWithContext(ctx, name, args, "", "", "", "", nil)
