@@ -7,10 +7,11 @@ import (
 	"time"
 )
 
-// executeList shows running and retained subagent tasks.
+// executeList shows running and retained subagent tasks spawned from the
+// calling session (below the caller when it is itself a subagent).
 func (t *SpawnTool) executeList(ctx context.Context) *Result {
 	scope := t.scopeFromContext(ctx)
-	tasks := t.subagentMgr.ListTasks(scope, "")
+	tasks := t.subagentMgr.ListTasksForCaller(scope, TaskCallerFromContext(ctx))
 	if len(tasks) == 0 {
 		return &Result{ForLLM: "No subagent tasks found."}
 	}
@@ -46,14 +47,15 @@ func (t *SpawnTool) executeList(ctx context.Context) *Result {
 	)}
 }
 
-// executeCancel cancels a subagent task by ID.
+// executeCancel cancels a subagent task by ID. "all" and "last" only reach
+// the calling session's tasks.
 func (t *SpawnTool) executeCancel(ctx context.Context, args map[string]any) *Result {
 	id, _ := args["id"].(string)
 	if id == "" {
 		return ErrorResult("id is required for action=cancel")
 	}
 
-	if t.subagentMgr.CancelTask(t.scopeFromContext(ctx), id) {
+	if t.subagentMgr.CancelTaskForCaller(t.scopeFromContext(ctx), TaskCallerFromContext(ctx), id) {
 		return &Result{ForLLM: fmt.Sprintf("Task '%s' cancelled.", id)}
 	}
 
@@ -78,20 +80,22 @@ func (t *SpawnTool) executeSteer(ctx context.Context, args map[string]any) *Resu
 	return &Result{ForLLM: msg}
 }
 
-// executeWait blocks until all children of the calling agent complete or timeout.
+// executeWait blocks until the subagents spawned by the calling session (in
+// the current run when known) finish or the timeout elapses. Finished tasks
+// already returned by an earlier wait are not repeated.
 func (t *SpawnTool) executeWait(ctx context.Context, args map[string]any) *Result {
 	timeout := 300
 	if v, ok := args["timeout"].(float64); ok && v > 0 {
 		timeout = int(v)
 	}
 
-	tasks, err := t.subagentMgr.WaitForChildren(ctx, t.scopeFromContext(ctx), "", timeout)
+	tasks, err := t.subagentMgr.WaitForCallerTasks(ctx, t.scopeFromContext(ctx), TaskCallerFromContext(ctx), timeout)
 	return t.formatWaitResult(tasks, err)
 }
 
 func (t *SpawnTool) formatWaitResult(tasks []*SubagentTask, waitErr error) *Result {
 	if len(tasks) == 0 {
-		msg := "No subagent tasks found."
+		msg := "No subagent tasks to wait for in this session (results already returned by an earlier wait are not repeated)."
 		if waitErr != nil {
 			msg += " Error: " + waitErr.Error()
 		}

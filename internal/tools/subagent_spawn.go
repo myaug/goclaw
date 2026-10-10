@@ -312,6 +312,7 @@ func newSubagentTask(
 		OriginSenderID:      store.SenderIDFromContext(ctx),
 		OriginRole:          store.RoleFromContext(ctx),
 		OriginSessionKey:    ToolSessionKeyFromCtx(ctx),
+		OriginRunID:         runIDFromContext(ctx),
 		OriginAgentID:       scope.RootAgentID,
 		OriginTenantID:      scope.TenantID,
 		RootAgentID:         scope.RootAgentID,

@@ -60,7 +60,7 @@ func (t *SpawnTool) Parameters() map[string]any {
 			},
 			"id": map[string]any{
 				"type":        "string",
-				"description": "Task ID for cancel/steer. For cancel: use 'all' to cancel all or 'last' for most recent",
+				"description": "Task ID for cancel/steer. For cancel: use 'all' to cancel all subagents spawned in this conversation or 'last' for the most recent one",
 			},
 			"completion_id": map[string]any{
 				"type":        "string",
@@ -113,7 +113,10 @@ func (t *SpawnTool) executeGet(ctx context.Context, args map[string]any) *Result
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	if task == nil {
+	// The completion row is already tenant + root-agent scoped; also keep it
+	// inside the session that spawned it. Rows without a session key (spawned
+	// outside a session) stay readable at the root-agent scope.
+	if task == nil || !persistedTaskInSession(task, ToolSessionKeyFromCtx(ctx)) {
 		return ErrorResult("subagent completion not found")
 	}
 	payload, err := json.Marshal(persistedCompletionPayload(task))
@@ -121,6 +124,10 @@ func (t *SpawnTool) executeGet(ctx context.Context, args map[string]any) *Result
 		return ErrorResult("failed to encode subagent completion")
 	}
 	return NewResult(string(payload))
+}
+
+func persistedTaskInSession(task *store.SubagentTaskData, sessionKey string) bool {
+	return task.SessionKey == nil || *task.SessionKey == "" || *task.SessionKey == sessionKey
 }
 
 func (t *SpawnTool) executeSpawn(ctx context.Context, args map[string]any) *Result {

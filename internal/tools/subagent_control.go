@@ -186,10 +186,22 @@ func (sm *SubagentManager) ListTasks(scope TaskScope, parentTaskID string) []*Su
 	return result
 }
 
-// CancelTask cancels a running task by ID.
-// Special IDs: "all" cancels all running tasks for any parent,
-// "last" cancels the most recently created running task.
+// CancelTask cancels a running task by ID within one tenant/root-agent tree.
+// Special IDs: "all" cancels all running tasks of the tree (every session),
+// "last" cancels the most recently created running task of the tree.
+// The spawn tool uses CancelTaskForCaller, which limits "all"/"last" to the
+// calling session.
 func (sm *SubagentManager) CancelTask(scope TaskScope, id string) bool {
+	return sm.cancelTask(scope, nil, id)
+}
+
+// cancelTask implements CancelTask and CancelTaskForCaller. A nil caller keeps
+// "all"/"last" at the tenant/root-agent scope.
+func (sm *SubagentManager) cancelTask(scope TaskScope, caller *TaskCaller, id string) bool {
+	bulkMatch := func(t *SubagentTask) bool {
+		return taskMatchesScope(t, scope) && isActiveTaskStatus(t.Status) &&
+			(caller == nil || sm.callerOwnsLocked(t, *caller))
+	}
 	finish, ok := sm.beginLifecycleOperation()
 	if !ok {
 		return false
@@ -206,7 +218,7 @@ func (sm *SubagentManager) CancelTask(scope TaskScope, id string) bool {
 
 	if id == "all" {
 		for _, t := range sm.tasks {
-			if taskMatchesScope(t, scope) && isActiveTaskStatus(t.Status) {
+			if bulkMatch(t) {
 				sm.cancelTaskLocked(t)
 				cancelled = append(cancelled, t)
 			}
@@ -225,7 +237,7 @@ func (sm *SubagentManager) CancelTask(scope TaskScope, id string) bool {
 	if id == "last" {
 		var latest *SubagentTask
 		for _, t := range sm.tasks {
-			if taskMatchesScope(t, scope) && isActiveTaskStatus(t.Status) {
+			if bulkMatch(t) {
 				if latest == nil || t.CreatedAt > latest.CreatedAt {
 					latest = t
 				}
@@ -382,7 +394,9 @@ func (sm *SubagentManager) Steer(
 	return fmt.Sprintf("Steered subagent %q → new task spawned. %s", taskID, msg), nil
 }
 
-// WaitForChildren blocks until all running tasks for parentID complete or timeout.
+// WaitForChildren blocks until all running tasks of the tenant/root-agent tree
+// (optionally narrowed to one parentTaskID) complete or timeout. It is not
+// session-scoped; the spawn tool's wait uses WaitForCallerTasks instead.
 func (sm *SubagentManager) WaitForChildren(ctx context.Context, scope TaskScope, parentTaskID string, timeoutSec int) ([]*SubagentTask, error) {
 	if timeoutSec <= 0 {
 		timeoutSec = 300

@@ -73,6 +73,7 @@ type SubagentTask struct {
 	OriginSenderID    string          `json:"originSenderId,omitempty"`   // real acting sender; preserves permission attribution in announce re-ingress (#915)
 	OriginRole        string          `json:"originRole,omitempty"`       // parent's RBAC role; bypasses per-user grants for admin/operator/owner in re-ingress (#915)
 	OriginSessionKey  string          `json:"originSessionKey,omitempty"` // exact parent session key for announce routing (WS uses non-standard format)
+	OriginRunID       string          `json:"-"`                          // parent run ID at spawn time; scopes spawn(action=wait) to the current run
 	CreatedAt         int64           `json:"createdAt"`
 	CompletedAt       int64           `json:"completedAt,omitempty"`
 	Media             []bus.MediaFile `json:"-"` // media files from tool results
@@ -93,6 +94,7 @@ type SubagentTask struct {
 	toolScope           subagentToolScope  `json:"-"` // parent's tool boundary captured at spawn time
 	dbID                uuid.UUID          `json:"-"` // persistent DB UUID (zero if not persisted)
 	admissionTicket     *orchestration.ChildRunTicket
+	waitReported        bool // finished result already returned by spawn(action=wait)
 }
 
 // TaskScope is the authorization boundary for every in-memory task action.
