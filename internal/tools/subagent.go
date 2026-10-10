@@ -7,7 +7,8 @@
 //   - Max executing descendants per root agent: configurable (default 20)
 //   - Auto-archive after configurable TTL (default 60 min)
 //   - Tools: a subset of the parent's effective tool set (fail closed when it
-//     is unknown), then deny lists ALWAYS_DENY + LEAF_DENY at max depth
+//     is unknown), then deny lists ALWAYS_DENY + LEAF_DENY at max depth, then
+//     the configured toolDeny patterns (inherited by nested spawns)
 //   - Results announced back to parent via message bus
 package tools
 
@@ -36,6 +37,10 @@ type SubagentConfig struct {
 	ArchiveAfterMinutes int    // auto-archive completed tasks (default 60)
 	MaxRetries          int    // max LLM call retries on error (default 2)
 	Model               string // model override for subagents (empty = inherit)
+	// ToolDeny is removed from every spawned subagent's tools (names, "*"
+	// globs, "group:" specs; see subagent_tool_deny.go). Per-agent lists are
+	// added to the gateway default, never replace it.
+	ToolDeny []string
 }
 
 // Subagent task status constants.
@@ -238,6 +243,7 @@ func (sm *SubagentManager) effectiveConfig(ctx context.Context) SubagentConfig {
 	if override.Model != "" {
 		cfg.Model = override.Model
 	}
+	cfg.ToolDeny = mergeToolDeny(sm.config.ToolDeny, override.ToolDeny)
 	return cfg
 }
 

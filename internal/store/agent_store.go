@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -118,7 +119,10 @@ func (a *AgentData) ParseSubagentsConfig() *config.SubagentsConfig {
 		return nil
 	}
 	var c config.SubagentsConfig
-	if json.Unmarshal(a.SubagentsConfig, &c) != nil {
+	if err := json.Unmarshal(a.SubagentsConfig, &c); err != nil {
+		// The whole override, including any toolDeny list, is dropped; make it
+		// visible rather than silently running subagents without it.
+		slog.Warn("agents.subagents_config_invalid", "agent", a.AgentKey, "error", err)
 		return nil
 	}
 	return &c

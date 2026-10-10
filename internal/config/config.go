@@ -615,6 +615,36 @@ type SubagentsConfig struct {
 	ArchiveAfterMinutes int    `json:"archiveAfterMinutes,omitempty"` // default 60
 	MaxRetries          int    `json:"maxRetries,omitempty"`          // max LLM retries on error (default 2)
 	Model               string `json:"model,omitempty"`               // model override for subagents
+
+	// ToolDeny removes tools from every subagent this agent spawns, on top of
+	// the parent's own tool set and the built-in subagent deny lists. Entries
+	// are tool names, "*" globs ("mcp_*__*_delete") or "group:<name>"
+	// (the group name may itself be a glob, e.g. "group:mcp:*"). A glob also
+	// matches an MCP tool's original, unprefixed name. Nested spawns inherit
+	// the list; deny lists only ever accumulate.
+	ToolDeny []string `json:"toolDeny,omitempty"`
+}
+
+// ValidateSubagentsConfigJSON checks a per-agent subagents_config value. A
+// value that does not decode is ignored at runtime, which would silently drop
+// its toolDeny list, so writers reject it instead. Empty and JSON null are
+// valid (no override).
+func ValidateSubagentsConfigJSON(raw []byte) error {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	var c SubagentsConfig
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return fmt.Errorf("invalid subagents_config: %w", err)
+	}
+	for i, p := range c.ToolDeny {
+		p = strings.TrimSpace(p)
+		if p == "" || p == "group:" {
+			return fmt.Errorf("invalid subagents_config: toolDeny[%d] is empty", i)
+		}
+	}
+	return nil
 }
 
 // AgentSpec is the per-agent configuration override.

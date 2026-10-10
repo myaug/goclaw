@@ -118,6 +118,10 @@ func (m *AgentsMethods) handleUpdate(ctx context.Context, client *gateway.Client
 			updates["tools_config"] = []byte(params.ToolsConfig)
 		}
 		if len(params.SubagentsConfig) > 0 {
+			if err := config.ValidateSubagentsConfigJSON(params.SubagentsConfig); err != nil {
+				client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, err.Error()))
+				return
+			}
 			updates["subagents_config"] = []byte(params.SubagentsConfig)
 		}
 		if len(params.SandboxConfig) > 0 {

@@ -207,13 +207,14 @@ func (sm *SubagentManager) executeTask(ctx context.Context, task *SubagentTask) 
 	}
 
 	// Build the subagent's tools: a subset of the parent's effective tool set,
-	// narrowed by the subagent deny lists (fail closed when the parent's policy
-	// is unknown). toolDefs is what the model sees; allowedTools is what it may
-	// execute — the same names. Publishing both on toolCtx makes nested spawns
-	// inherit this boundary.
+	// narrowed by the subagent deny lists and toolDeny patterns (fail closed
+	// when the parent's policy is unknown). toolDefs is what the model sees;
+	// allowedTools is what it may execute — the same names. Publishing them and
+	// the deny patterns on toolCtx makes nested spawns inherit this boundary.
 	toolsReg, toolDefs, allowedTools := sm.buildSubagentTools(task)
 	toolCtx = store.WithAvailableToolNames(toolCtx, allowedTools)
 	toolCtx = WithSubagentToolSource(toolCtx, toolsReg)
+	toolCtx = withSubagentToolDeny(toolCtx, task.toolScope.deny)
 
 	// Determine model (cascading priority):
 	// 1. Per-task model override (highest — LLM specified model in spawn call)

@@ -23,6 +23,8 @@ export interface SubagentsConfig {
   archiveAfterMinutes?: number;
   maxRetries?: number;
   model?: string;
+  /** Tools removed from spawned subagents: names, "*" globs, "group:<name>". Inherited by nested spawns. */
+  toolDeny?: string[];
 }
 
 export interface CompactionConfig {

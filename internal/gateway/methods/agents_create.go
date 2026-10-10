@@ -127,6 +127,11 @@ func (m *AgentsMethods) handleCreate(ctx context.Context, client *gateway.Client
 			model = m.cfg.Agents.Defaults.Model
 		}
 
+		if err := config.ValidateSubagentsConfigJSON(params.SubagentsConfig); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, err.Error()))
+			return
+		}
+
 		agentData := &store.AgentData{
 			AgentKey:         agentID,
 			DisplayName:      params.Name,

@@ -39,6 +39,8 @@ export interface SubagentsConfig {
   maxChildrenPerAgent?: number
   archiveAfterMinutes?: number
   model?: string
+  /** Tools removed from spawned subagents: names, "*" globs, "group:<name>". Inherited by nested spawns. */
+  toolDeny?: string[]
 }
 
 export interface ToolPolicyConfig {

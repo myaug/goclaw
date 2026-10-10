@@ -201,6 +201,8 @@ func setupSubagents(providerReg *providers.Registry, cfg *config.Config, msgBus 
 		if sc.Model != "" {
 			subCfg.Model = sc.Model
 		}
+		// Gateway-wide default; per-agent subagents_config.toolDeny adds to it.
+		subCfg.ToolDeny = append([]string(nil), sc.ToolDeny...)
 	}
 
 	// No gateway-wide tool factory: a subagent's tools derive from the registry

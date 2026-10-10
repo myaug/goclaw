@@ -355,6 +355,10 @@ func (h *AgentsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, err.Error()))
 		return
 	}
+	if err := config.ValidateSubagentsConfigJSON(req.SubagentsConfig); err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, err.Error()))
+		return
+	}
 
 	if err := h.agents.Create(r.Context(), &req); err != nil {
 		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "23505") {
@@ -543,6 +547,17 @@ func (h *AgentsHandler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		validationAgent.ModelFallback = rawFallback
 		allowed["model_fallback"] = rawFallback
+	}
+	if subagents, ok := allowed["subagents_config"]; ok && subagents != nil {
+		rawSubagents, err := marshalJSONRaw(subagents)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidJSON))
+			return
+		}
+		if err := config.ValidateSubagentsConfigJSON(rawSubagents); err != nil {
+			writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, err.Error()))
+			return
+		}
 	}
 
 	if err := validateChatGPTOAuthAgentRouting(

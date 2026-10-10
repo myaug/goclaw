@@ -409,7 +409,7 @@ func TestSubagentToolsFailClosedWithoutParentPolicy(t *testing.T) {
 func TestSubagentToolScopeSnapshotIsolatedFromParentMap(t *testing.T) {
 	allowed := map[string]bool{"read_file": true}
 	ctx := parentRunContext(NewRegistry(), allowed)
-	scope := captureSubagentToolScope(ctx)
+	scope := captureSubagentToolScope(ctx, nil)
 	allowed["web_fetch"] = true
 	if scope.allowed["web_fetch"] {
 		t.Fatal("captured scope aliases the parent's mutable allowlist")

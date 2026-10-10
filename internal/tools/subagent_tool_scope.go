@@ -23,9 +23,11 @@ import (
 //     each carrying the same execution-time grant re-check the parent uses.
 //
 // The child registry is built from the parent's registry, cut down to the
-// parent's allowlist, then narrowed by the subagent deny lists. The resulting
-// name set is both what the model is shown and what it may execute. Nested
-// spawns inherit the child's set, so restrictions only ever narrow.
+// parent's allowlist, then narrowed by the subagent deny lists and by the
+// spawning agent's subagents toolDeny patterns (subagent_tool_deny.go). The
+// resulting name set is both what the model is shown and what it may execute.
+// Nested spawns inherit the child's set and its toolDeny patterns, so
+// restrictions only ever narrow.
 //
 // If either value is missing the parent's policy cannot be established, and the
 // subagent runs with no tools at all rather than with the full gateway registry.
@@ -64,13 +66,19 @@ func (sm *SubagentManager) SetParentToolsFactory(f SubagentToolsFactory) {
 type subagentToolScope struct {
 	allowed map[string]bool // parent's effective tool names; nil = unresolved
 	source  *Registry       // parent's registry; nil = unknown
+	deny    []string        // toolDeny patterns: the caller's inherited list plus its config
 }
 
 // captureSubagentToolScope snapshots the caller's tool boundary. The allowlist
 // is copied because the pipeline may extend its own map later in the run (lazy
-// MCP activation), which must not widen an already spawned child.
-func captureSubagentToolScope(ctx context.Context) subagentToolScope {
-	scope := subagentToolScope{source: SubagentToolSourceFromCtx(ctx)}
+// MCP activation), which must not widen an already spawned child. configDeny is
+// the spawning agent's resolved toolDeny; it is added to the patterns the
+// caller itself inherited when it is a subagent.
+func captureSubagentToolScope(ctx context.Context, configDeny []string) subagentToolScope {
+	scope := subagentToolScope{
+		source: SubagentToolSourceFromCtx(ctx),
+		deny:   mergeToolDeny(subagentToolDenyFromCtx(ctx), configDeny),
+	}
 	if names := store.AvailableToolNamesFromContext(ctx); names != nil {
 		scope.allowed = make(map[string]bool, len(names))
 		for name, ok := range names {
@@ -124,14 +132,20 @@ func (sm *SubagentManager) buildSubagentTools(task *SubagentTask) (*Registry, []
 		}
 	}
 	sm.applyDenyList(reg, task.Depth, task.spawnConfig)
+	deny := newToolDenyMatcher(reg, scope.deny)
+	if removed := deny.unregisterFrom(reg); len(removed) > 0 {
+		slog.Debug("subagent.tool_deny_applied",
+			"id", task.ID, "root_agent", task.RootAgentKey, "depth", task.Depth, "removed", removed)
+	}
 
 	// Aliases are emitted for surviving canonical tools; keep only the names the
-	// parent was itself shown, so an alias cannot reach past the boundary either.
+	// parent was itself shown, so an alias cannot reach past the boundary either,
+	// and drop any alias name that is itself denied.
 	all := reg.ProviderDefs()
 	defs := make([]providers.ToolDefinition, 0, len(all))
 	allowed := make(map[string]bool, len(all))
 	for _, td := range all {
-		if td.Function == nil || !scope.allowed[td.Function.Name] {
+		if td.Function == nil || !scope.allowed[td.Function.Name] || deny.matches(td.Function.Name, "") {
 			continue
 		}
 		defs = append(defs, td)
