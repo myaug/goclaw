@@ -206,10 +206,14 @@ func (sm *SubagentManager) executeTask(ctx context.Context, task *SubagentTask) 
 		return 0
 	}
 
-	// Build tools for subagent (no spawn/subagent tools to prevent recursion)
-	toolsReg := sm.createTools()
-	toolsReg.Register(NewSpawnTool(sm, task.RootAgentKey, task.Depth))
-	sm.applyDenyList(toolsReg, task.Depth, task.spawnConfig)
+	// Build the subagent's tools: a subset of the parent's effective tool set,
+	// narrowed by the subagent deny lists (fail closed when the parent's policy
+	// is unknown). toolDefs is what the model sees; allowedTools is what it may
+	// execute — the same names. Publishing both on toolCtx makes nested spawns
+	// inherit this boundary.
+	toolsReg, toolDefs, allowedTools := sm.buildSubagentTools(task)
+	toolCtx = store.WithAvailableToolNames(toolCtx, allowedTools)
+	toolCtx = WithSubagentToolSource(toolCtx, toolsReg)
 
 	// Determine model (cascading priority):
 	// 1. Per-task model override (highest — LLM specified model in spawn call)
@@ -272,7 +276,7 @@ func (sm *SubagentManager) executeTask(ctx context.Context, task *SubagentTask) 
 
 		chatReq := providers.ChatRequest{
 			Messages: messages,
-			Tools:    toolsReg.ProviderDefs(),
+			Tools:    toolDefs,
 			Model:    model,
 			Options: map[string]any{
 				"max_tokens":  4096,
@@ -347,7 +351,15 @@ func (sm *SubagentManager) executeTask(ctx context.Context, task *SubagentTask) 
 			argsJSON, _ := json.Marshal(tc.Arguments)
 			toolStart := time.Now().UTC()
 			toolSpanID := sm.emitToolSpanStart(subTraceCtx, toolStart, tc.Name, tc.ID, string(argsJSON))
-			result := toolsReg.Execute(toolCtx, tc.Name, tc.Arguments)
+			var result *Result
+			if allowedTools[tc.Name] {
+				result = toolsReg.Execute(toolCtx, tc.Name, tc.Arguments)
+			} else {
+				// The model may name a tool it was never shown; never execute it.
+				slog.Warn("security.subagent_tool_call_rejected",
+					"id", task.ID, "root_agent", task.RootAgentKey, "depth", task.Depth, "tool", tc.Name)
+				result = ErrorResult(fmt.Sprintf("tool %q is not available to this subagent", tc.Name))
+			}
 			result.ForLLM = tracing.RedactText(ctx, result.ForLLM)
 			sm.emitToolSpanEnd(subTraceCtx, toolSpanID, toolStart, result.ForLLM, result.IsError)
 

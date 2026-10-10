@@ -513,7 +513,9 @@ func WithAvailableToolNames(ctx context.Context, names map[string]bool) context.
 // RunState.Tool.AllowedTools (see ThinkStage.Execute): nil means either the
 // agent has no tool policy configured, or the caller never populated this key
 // at all (e.g. a code path outside the pipeline's per-iteration tool dispatch).
-// Never treat nil as "no tools available".
+// Never treat nil as "no tools available" — with one deliberate exception: the
+// subagent manager treats nil as "parent policy unknown" and gives a spawned
+// subagent no tools (fail closed), since it would otherwise widen access.
 func AvailableToolNamesFromContext(ctx context.Context) map[string]bool {
 	v, _ := ctx.Value(AvailableToolNamesKey).(map[string]bool)
 	return v

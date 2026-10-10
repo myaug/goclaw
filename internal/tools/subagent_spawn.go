@@ -324,6 +324,7 @@ func newSubagentTask(
 		MediaPathPrefix:     mediaPathPrefix,
 		CreatedAt:           time.Now().UnixMilli(),
 		spawnConfig:         cfg,
+		toolScope:           captureSubagentToolScope(ctx),
 	}
 }
 

@@ -271,7 +271,7 @@ func TestRunSyncReturnsGeneratedMedia(t *testing.T) {
 	provider := &mediaSubagentProvider{}
 	manager := newMediaSubagentManager(provider)
 
-	ctx := subagentTestContext("parent")
+	ctx := mediaParentContext()
 	result, media, _, err := manager.RunSync(ctx, "parent", 0, "create media", "media", "", "delegate", "chat")
 	if err != nil {
 		t.Fatalf("RunSync() error = %v", err)
@@ -287,7 +287,7 @@ func TestRunSyncReturnsGeneratedMedia(t *testing.T) {
 func TestSpawnToolSyncForwardsGeneratedMedia(t *testing.T) {
 	provider := &mediaSubagentProvider{}
 	tool := NewSpawnTool(newMediaSubagentManager(provider), "parent", 0)
-	ctx := subagentTestContext("parent")
+	ctx := mediaParentContext()
 
 	result := tool.Execute(ctx, map[string]any{
 		"task": "create media",
@@ -308,6 +308,12 @@ func subagentTestContext(rootKey string) context.Context {
 	ctx = store.WithAgentContextWindow(ctx, 200_000)
 	ctx = store.WithAgentMaxTokens(ctx, 32_000)
 	return WithToolAgentKey(ctx, rootKey)
+}
+
+// mediaParentContext publishes a parent tool policy that allows the media tool;
+// without one a subagent runs with no tools (fail closed).
+func mediaParentContext() context.Context {
+	return store.WithAvailableToolNames(subagentTestContext("parent"), map[string]bool{"create_test_media": true})
 }
 
 func newMediaSubagentManager(provider providers.Provider) *SubagentManager {

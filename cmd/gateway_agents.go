@@ -164,7 +164,7 @@ func buildEmbeddingProvider(
 	return nil
 }
 
-func setupSubagents(providerReg *providers.Registry, cfg *config.Config, msgBus *bus.MessageBus, toolsReg *tools.Registry, workspace string, sandboxMgr sandbox.Manager, secureCLIStore store.SecureCLIStore, usageCapSvc *usagecaps.Service, admission *orchestration.ChildRunAdmission) *tools.SubagentManager {
+func setupSubagents(providerReg *providers.Registry, cfg *config.Config, msgBus *bus.MessageBus, workspace string, sandboxMgr sandbox.Manager, secureCLIStore store.SecureCLIStore, usageCapSvc *usagecaps.Service, admission *orchestration.ChildRunAdmission) *tools.SubagentManager {
 	names := providerReg.List(context.Background())
 	if len(names) == 0 {
 		return nil
@@ -203,19 +203,35 @@ func setupSubagents(providerReg *providers.Registry, cfg *config.Config, msgBus 
 		}
 	}
 
-	// Tool factory: clone parent registry (inherits web_fetch, web_search, browser, MCP tools, etc.)
-	// then override file/exec tools with workspace-scoped versions.
-	// NOTE: SubagentManager.applyDenyList() handles deny lists after createTools(),
-	// so we don't apply deny lists here.
-	toolsFactory := func() *tools.Registry {
-		reg, _ := buildSubagentToolsRegistry(toolsReg, workspace, agentCfg.RestrictToWorkspace, sandboxMgr, secureCLIStore)
-		return reg
-	}
-
-	manager := tools.NewSubagentManagerWithAdmission(provider, providerReg, agentCfg.Model, msgBus, toolsFactory, subCfg, admission)
+	// No gateway-wide tool factory: a subagent's tools derive from the registry
+	// of the agent that spawned it (see newSubagentToolsFactory), so it cannot
+	// reach tools or MCP servers its parent was not given. Without a parent
+	// registry the manager fails closed instead of using the global registry.
+	manager := tools.NewSubagentManagerWithAdmission(provider, providerReg, agentCfg.Model, msgBus, nil, subCfg, admission)
+	manager.SetParentToolsFactory(newSubagentToolsFactory(workspace, agentCfg.RestrictToWorkspace, sandboxMgr, secureCLIStore))
 	manager.SetUsageCapService(usageCapSvc)
 	manager.SetAgentBudget(agentCfg.ContextWindow, agentCfg.MaxTokens)
 	return manager
+}
+
+// newSubagentToolsFactory returns the factory that derives a subagent's registry
+// from its parent's: a clone of the parent's registry (its builtins and its
+// grant-filtered MCP tools) with file/exec tools replaced by workspace-scoped
+// versions. The SubagentManager then cuts the result down to the parent's
+// effective tool set and applies the subagent deny lists.
+func newSubagentToolsFactory(
+	workspace string,
+	restrict bool,
+	sandboxMgr sandbox.Manager,
+	secureCLIStore store.SecureCLIStore,
+) tools.SubagentToolsFactory {
+	return func(parent *tools.Registry) *tools.Registry {
+		if parent == nil {
+			return nil
+		}
+		reg, _ := buildSubagentToolsRegistry(parent, workspace, restrict, sandboxMgr, secureCLIStore)
+		return reg
+	}
 }
 
 // buildSubagentToolsRegistry produces a cloned tool registry for a subagent

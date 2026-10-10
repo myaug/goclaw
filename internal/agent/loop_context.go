@@ -137,6 +137,11 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 	if l.provider != nil {
 		ctx = tools.WithParentProvider(ctx, l.provider.Name())
 	}
+	// Subagents source their tools from this agent's own registry (its
+	// grant-filtered MCP tools included), never from the gateway-wide one.
+	// Always overwrite a value inherited from an outer agent's run; a nil
+	// registry makes the subagent manager fail closed.
+	ctx = tools.WithSubagentToolSource(ctx, tools.ResolveConcreteRegistry(l.tools))
 	if l.memoryCfg != nil {
 		ctx = tools.WithMemoryConfig(ctx, l.memoryCfg)
 	}

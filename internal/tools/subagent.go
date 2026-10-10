@@ -6,7 +6,8 @@
 //   - Max children per parent: configurable (default 5)
 //   - Max executing descendants per root agent: configurable (default 20)
 //   - Auto-archive after configurable TTL (default 60 min)
-//   - Tool deny lists: ALWAYS_DENY + LEAF_DENY at max depth
+//   - Tools: a subset of the parent's effective tool set (fail closed when it
+//     is unknown), then deny lists ALWAYS_DENY + LEAF_DENY at max depth
 //   - Results announced back to parent via message bus
 package tools
 
@@ -84,6 +85,7 @@ type SubagentTask struct {
 	OriginMaxTokens     int                `json:"-"`
 	cancelFunc          context.CancelFunc `json:"-"` // per-task context cancel
 	spawnConfig         SubagentConfig     `json:"-"` // resolved config at spawn time (per-agent override merged)
+	toolScope           subagentToolScope  `json:"-"` // parent's tool boundary captured at spawn time
 	dbID                uuid.UUID          `json:"-"` // persistent DB UUID (zero if not persisted)
 	admissionTicket     *orchestration.ChildRunTicket
 }
@@ -107,6 +109,7 @@ type SubagentManager struct {
 	msgBus      *bus.MessageBus
 
 	// createTools builds a tool registry for subagents (without spawn/subagent tools).
+	// Legacy base, used only when no parent-aware factory is installed.
 	createTools     func() *Registry
 	announceQueue   *AnnounceQueue          // optional: batches announces with debounce
 	taskStore       store.SubagentTaskStore // optional: durable async completion ledger
@@ -126,6 +129,10 @@ type SubagentManager struct {
 	// Defaults used only when a task was created without caller-specific context.
 	contextWindow int
 	maxTokens     int
+
+	// parentToolsFactory derives a subagent registry from its parent's registry
+	// (see subagent_tool_scope.go).
+	parentToolsFactory SubagentToolsFactory
 }
 
 // NewSubagentManager creates a new subagent manager.

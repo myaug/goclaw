@@ -499,7 +499,7 @@ func runGateway() {
 
 	// Subagent system (secureCLI store wired so subagent ExecTools enforce the gate)
 	childRunAdmission := orchestration.NewChildRunAdmission(edition.Current().ChildRunLimit(), 128)
-	subagentMgr := setupSubagents(providerRegistry, cfg, msgBus, toolsReg, workspace, sandboxMgr, pgStores.SecureCLI, usageCapSvc, childRunAdmission)
+	subagentMgr := setupSubagents(providerRegistry, cfg, msgBus, workspace, sandboxMgr, pgStores.SecureCLI, usageCapSvc, childRunAdmission)
 	if subagentMgr != nil {
 		// Wire announce queue for batched subagent result delivery (matching TS debounce pattern).
 		announceQueue := tools.NewAnnounceQueue(1000, 20, makeDelegateAnnounceCallback(subagentMgr, msgBus))
