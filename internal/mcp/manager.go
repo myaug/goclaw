@@ -26,11 +26,6 @@ const (
 	maxBackoff           = 60 * time.Second
 	maxReconnectAttempts = 10
 	reconnectCooldown    = 5 * time.Minute // wait after exhausting reconnect attempts before retrying
-
-	// mcpToolInlineMaxCount is the threshold above which MCP tools switch
-	// to search mode (deferred loading via mcp_tool_search) instead of
-	// being registered inline in the tool registry.
-	mcpToolInlineMaxCount = 40
 )
 
 // ServerStatus reports the connection status of an MCP server.
@@ -92,8 +87,8 @@ type serverState struct {
 //   - Config-based: reads from config.MCPServerConfig map (shared across all agents)
 //   - DB-backed: queries MCPServerStore per agent+user for permission-filtered servers
 //
-// When total MCP tool count exceeds mcpToolInlineMaxCount, the manager
-// enters hybrid search mode: the first mcpToolInlineMaxCount tools stay
+// When total MCP tool count exceeds InlineToolLimit(), the manager
+// enters hybrid search mode: the first InlineToolLimit() tools stay
 // registered inline, while excess tools move to deferredTools and are
 // discovered via mcp_tool_search. Tools are activated on demand via
 // ActivateTools().
@@ -472,17 +467,18 @@ func (m *Manager) LoadForAgent(ctx context.Context, agentID uuid.UUID, userID st
 }
 
 // maybeEnterSearchMode partially defers MCP tools when total count exceeds
-// the inline threshold. The first mcpToolInlineMaxCount tools stay registered
+// the inline threshold. The first InlineToolLimit() tools stay registered
 // inline; the rest are moved to deferredTools and discovered via mcp_tool_search.
 func (m *Manager) maybeEnterSearchMode() {
+	limit := InlineToolLimit()
 	allNames := m.ToolNames()
-	if len(allNames) <= mcpToolInlineMaxCount {
+	if len(allNames) <= limit {
 		return
 	}
 
 	// Build a set of names to defer (everything beyond the threshold).
-	deferSet := make(map[string]struct{}, len(allNames)-mcpToolInlineMaxCount)
-	for _, name := range allNames[mcpToolInlineMaxCount:] {
+	deferSet := make(map[string]struct{}, len(allNames)-limit)
+	for _, name := range allNames[limit:] {
 		deferSet[name] = struct{}{}
 	}
 
@@ -524,7 +520,7 @@ func (m *Manager) maybeEnterSearchMode() {
 	}
 
 	// Update "mcp" group to only the kept inline names.
-	inlineNames := append([]string(nil), allNames[:mcpToolInlineMaxCount]...)
+	inlineNames := append([]string(nil), allNames[:limit]...)
 	m.inlineToolNames = inlineNames
 	m.registry.RegisterToolGroup("mcp", m.searchModeGroupNamesLocked())
 	m.searchMode = true
@@ -532,7 +528,7 @@ func (m *Manager) maybeEnterSearchMode() {
 	slog.Info("mcp.search_mode.enabled",
 		"inline_tools", len(inlineNames),
 		"deferred_tools", len(m.deferredTools),
-		"threshold", mcpToolInlineMaxCount)
+		"threshold", limit)
 }
 
 // searchModeGroupNamesLocked returns the "mcp" group members while in search

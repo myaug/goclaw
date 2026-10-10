@@ -630,3 +630,36 @@ func TestLoad_CronJobTimeout_EnvOverridesFile(t *testing.T) {
 		t.Fatalf("env should override file: got %v, want 30m", got)
 	}
 }
+
+func TestLoad_MCPInlineToolLimitFromFileAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json5")
+	os.WriteFile(cfgPath, []byte(`{"gateway":{"mcp_inline_tool_limit":60}}`), 0644)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load error: %v", err)
+	}
+	if cfg.Gateway.MCPInlineToolLimit != 60 {
+		t.Fatalf("file limit: got %d, want 60", cfg.Gateway.MCPInlineToolLimit)
+	}
+
+	t.Setenv("GOCLAW_MCP_INLINE_TOOL_LIMIT", "120")
+	if cfg, err = Load(cfgPath); err != nil {
+		t.Fatalf("load with env error: %v", err)
+	}
+	if cfg.Gateway.MCPInlineToolLimit != 120 {
+		t.Fatalf("env limit: got %d, want 120", cfg.Gateway.MCPInlineToolLimit)
+	}
+
+	// Non-numeric or non-positive env values are ignored; file value stays.
+	for _, bad := range []string{"abc", "0", "-5", "12.5"} {
+		t.Setenv("GOCLAW_MCP_INLINE_TOOL_LIMIT", bad)
+		if cfg, err = Load(cfgPath); err != nil {
+			t.Fatalf("load with env %q error: %v", bad, err)
+		}
+		if cfg.Gateway.MCPInlineToolLimit != 60 {
+			t.Fatalf("env %q: got %d, want file value 60", bad, cfg.Gateway.MCPInlineToolLimit)
+		}
+	}
+}

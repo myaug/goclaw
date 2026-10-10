@@ -59,7 +59,7 @@ func deferredNames(m *Manager) []string {
 }
 
 func TestSearchMode_ActivationKeepsInlineToolsInMCPGroup(t *testing.T) {
-	limit := mcpToolInlineMaxCount
+	limit := InlineToolLimit()
 	m, reg := setupOverLimitManager(t, limit+5)
 
 	m.mu.RLock()
@@ -117,7 +117,7 @@ func TestSearchMode_ActivationKeepsInlineToolsInMCPGroup(t *testing.T) {
 }
 
 func TestSearchMode_ActivationKeepsMergedPerUserTools(t *testing.T) {
-	m, reg := setupOverLimitManager(t, mcpToolInlineMaxCount+2)
+	m, reg := setupOverLimitManager(t, InlineToolLimit()+2)
 
 	// The agent loop merges per-user MCP tools into the same group.
 	userTool := makeBridgeTool("usersvc", "lookup").Name()
@@ -130,7 +130,7 @@ func TestSearchMode_ActivationKeepsMergedPerUserTools(t *testing.T) {
 }
 
 func TestSearchMode_UpdateMCPGroupKeepsActivatedTools(t *testing.T) {
-	m, reg := setupOverLimitManager(t, mcpToolInlineMaxCount+2)
+	m, reg := setupOverLimitManager(t, InlineToolLimit()+2)
 	activated := deferredNames(m)[0]
 	m.ActivateTools([]string{activated})
 

@@ -653,6 +653,8 @@ func runGateway() {
 	}
 	httpapi.InitGatewayToken(cfg.Gateway.Token)
 	mcpbridge.SetAllowedHosts(cfg.Gateway.MCPAllowedHosts) // operator allowlist: trusted MCP hosts exempt from private-IP SSRF block
+	// MCP tools kept inline per agent before search mode (default 40, max 200).
+	mcpbridge.SetInlineToolLimit(cfg.Gateway.MCPInlineToolLimit)
 	httpapi.InitGatewayNoAuthFallbackAllowed(config.GatewayNoAuthFallbackAllowed(cfg.Gateway))
 	exportTokenStore := httpapi.InitExportTokenStore()
 	defer exportTokenStore.Stop()

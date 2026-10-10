@@ -442,6 +442,7 @@ type GatewayConfig struct {
 	OwnerIDs                []string            `json:"owner_ids,omitempty"`                  // sender IDs considered "owner"
 	AllowedOrigins          []string            `json:"allowed_origins,omitempty"`            // WebSocket CORS whitelist (empty = allow all)
 	MCPAllowedHosts         []string            `json:"mcp_allowed_hosts,omitempty"`          // trusted MCP server hostnames exempt from the private-IP SSRF block during config validation (empty = none)
+	MCPInlineToolLimit      int                 `json:"mcp_inline_tool_limit,omitempty"`      // MCP tools registered inline per agent before switching to mcp_tool_search (default 40, max 200; 0 = default)
 	MaxMessageChars         int                 `json:"max_message_chars,omitempty"`          // max user message characters (default 32000)
 	RateLimitRPM            int                 `json:"rate_limit_rpm,omitempty"`             // rate limit: requests per minute per user (default 20, 0 = disabled)
 	InjectionAction         string              `json:"injection_action,omitempty"`           // prompt injection action: "log", "warn" (default), "block", "off"

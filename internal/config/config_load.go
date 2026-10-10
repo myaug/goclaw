@@ -348,6 +348,17 @@ func (c *Config) applyEnvOverrides() {
 		c.Gateway.MCPAllowedHosts = hosts
 	}
 
+	// Inline MCP tool limit before search mode. Range (1..200) is enforced by
+	// mcp.SetInlineToolLimit at gateway startup; here only reject non-positive
+	// or non-numeric values so they never override the config file.
+	if v := strings.TrimSpace(os.Getenv("GOCLAW_MCP_INLINE_TOOL_LIMIT")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.Gateway.MCPInlineToolLimit = n
+		} else {
+			slog.Warn("GOCLAW_MCP_INLINE_TOOL_LIMIT ignored: want a positive integer", "value", v)
+		}
+	}
+
 	// Tailscale (tsnet)
 	envStr("GOCLAW_TSNET_HOSTNAME", &c.Tailscale.Hostname)
 	envStr("GOCLAW_TSNET_AUTH_KEY", &c.Tailscale.AuthKey)

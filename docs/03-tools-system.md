@@ -540,6 +540,12 @@ GoClaw integrates with Model Context Protocol (MCP) servers. The MCP Manager con
 
 **Reliability:** Health checks every 30 seconds. Reconnection via exponential backoff (2s initial, 60s max, 10 attempts).
 
+**Search mode:** When an agent's granted MCP tools exceed the inline limit, the first N tools stay registered inline and the rest are deferred; the agent discovers them with `mcp_tool_search` and they are activated on demand. `group:mcp` always covers the inline tools plus every activated tool.
+
+| Setting | Default | Env Override | Range |
+|---------|:-------:|--------------|-------|
+| `gateway.mcp_inline_tool_limit` | 40 | `GOCLAW_MCP_INLINE_TOOL_LIMIT` | 1-200; invalid values are ignored with a warning and the default is used |
+
 **Access control:**
 
 ```mermaid
