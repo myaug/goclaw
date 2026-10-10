@@ -99,9 +99,25 @@ func (m *Manager) ServerToolInfos(serverName string) []ToolInfo {
 }
 
 // updateMCPGroup rebuilds the "mcp" group with all MCP tool names across servers.
+// In search mode the per-server lists hold only the inline tools, so the
+// activated tools are added back to keep group:mcp consistent with
+// ActivateTools / ActivateToolIfDeferred.
 // Must be called with m.mu NOT held (it acquires RLock).
 func (m *Manager) updateMCPGroup() {
 	allNames := m.ToolNames()
+	m.mu.RLock()
+	if m.searchMode {
+		seen := make(map[string]struct{}, len(allNames))
+		for _, n := range allNames {
+			seen[n] = struct{}{}
+		}
+		for n := range m.activatedTools {
+			if _, dup := seen[n]; !dup {
+				allNames = append(allNames, n)
+			}
+		}
+	}
+	m.mu.RUnlock()
 	if len(allNames) > 0 {
 		m.registry.RegisterToolGroup("mcp", allNames)
 	} else {
@@ -149,6 +165,7 @@ func (m *Manager) unregisterAllTools() {
 		}
 		m.deferredTools = nil
 		m.activatedTools = nil
+		m.inlineToolNames = nil
 		m.searchMode = false
 	}
 

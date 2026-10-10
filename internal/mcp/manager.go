@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -119,7 +120,11 @@ type Manager struct {
 	// Search mode: deferred tools not registered in registry
 	deferredTools  map[string]*BridgeTool // registeredName → BridgeTool
 	activatedTools map[string]struct{}    // tracks activated tool names for group:mcp
-	searchMode     bool
+	// inlineToolNames are the MCP tools kept registered when search mode was
+	// entered. group:mcp is always inlineToolNames ∪ activatedTools so that
+	// activating a deferred tool never drops the inline ones from the group.
+	inlineToolNames []string
+	searchMode      bool
 
 	// User-credential servers: servers requiring per-user credentials, stored during
 	// LoadForAgent("") for later per-request tool resolution. These servers are NOT
@@ -519,14 +524,47 @@ func (m *Manager) maybeEnterSearchMode() {
 	}
 
 	// Update "mcp" group to only the kept inline names.
-	inlineNames := allNames[:mcpToolInlineMaxCount]
-	m.registry.RegisterToolGroup("mcp", inlineNames)
+	inlineNames := append([]string(nil), allNames[:mcpToolInlineMaxCount]...)
+	m.inlineToolNames = inlineNames
+	m.registry.RegisterToolGroup("mcp", m.searchModeGroupNamesLocked())
 	m.searchMode = true
 
 	slog.Info("mcp.search_mode.enabled",
 		"inline_tools", len(inlineNames),
 		"deferred_tools", len(m.deferredTools),
 		"threshold", mcpToolInlineMaxCount)
+}
+
+// searchModeGroupNamesLocked returns the "mcp" group members while in search
+// mode: the inline tools plus every activated tool, sorted for determinism.
+// Caller must hold m.mu (read or write).
+func (m *Manager) searchModeGroupNamesLocked() []string {
+	names := make([]string, 0, len(m.inlineToolNames)+len(m.activatedTools))
+	seen := make(map[string]struct{}, cap(names))
+	for _, n := range m.inlineToolNames {
+		if _, dup := seen[n]; !dup {
+			seen[n] = struct{}{}
+			names = append(names, n)
+		}
+	}
+	for n := range m.activatedTools {
+		if _, dup := seen[n]; !dup {
+			seen[n] = struct{}{}
+			names = append(names, n)
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
+// mergeMCPGroup adds names to the "mcp" group without removing existing
+// members. Additive on purpose: the agent loop merges per-user MCP tools into
+// the same group (loop_mcp_user.go) and caches them, so replacing the group on
+// activation would silently drop them as well as the inline tools.
+func (m *Manager) mergeMCPGroup(names []string) {
+	if len(names) > 0 {
+		m.registry.MergeToolGroup("mcp", names)
+	}
 }
 
 // IsSearchMode reports whether the manager is in deferred/search mode.
@@ -586,13 +624,10 @@ func (m *Manager) ActivateTools(names []string) {
 		delete(m.deferredTools, name)
 		m.activatedTools[name] = struct{}{}
 	}
-	activeNames := make([]string, 0, len(m.activatedTools))
-	for n := range m.activatedTools {
-		activeNames = append(activeNames, n)
-	}
+	groupNames := m.searchModeGroupNamesLocked()
 	m.mu.Unlock()
 
-	m.registry.RegisterToolGroup("mcp", activeNames)
+	m.mergeMCPGroup(groupNames)
 	slog.Info("mcp.tools.activated", "tools", activated)
 }
 
@@ -615,15 +650,12 @@ func (m *Manager) ActivateToolIfDeferred(name string) bool {
 	m.activatedTools[name] = struct{}{}
 	bt := m.deferredTools[name]
 	delete(m.deferredTools, name)
-	activeNames := make([]string, 0, len(m.activatedTools))
-	for n := range m.activatedTools {
-		activeNames = append(activeNames, n)
-	}
+	groupNames := m.searchModeGroupNamesLocked()
 	m.mu.Unlock()
 
 	// Register in registry outside lock (registry has its own sync).
 	m.registry.Register(bt)
-	m.registry.RegisterToolGroup("mcp", activeNames)
+	m.mergeMCPGroup(groupNames)
 	slog.Info("mcp.tools.activated", "tools", []string{name})
 	return true
 }
