@@ -54,7 +54,10 @@ function ProviderListView() {
     createProvider, updateProvider, deleteProvider,
   } = useProviders();
   const showSkeleton = useDeferredLoading(loading && providers.length === 0);
-  const { statuses } = useChatGPTOAuthProviderStatuses(providers);
+  // Inherited (master-tenant) providers are read-only here: exclude them from
+  // OAuth status, pool ownership and pool setup, which all act on own providers.
+  const ownProviders = useMemo(() => providers.filter((p) => !p.inherited), [providers]);
+  const { statuses } = useChatGPTOAuthProviderStatuses(ownProviders);
 
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -66,12 +69,12 @@ function ProviderListView() {
     [providers],
   );
   const poolOwnership = useMemo(
-    () => getChatGPTOAuthPoolOwnership(providers),
-    [providers],
+    () => getChatGPTOAuthPoolOwnership(ownProviders),
+    [ownProviders],
   );
   const selectablePoolOwnership = useMemo(
-    () => getChatGPTOAuthPoolOwnership(providers, { enabledOnly: true }),
-    [providers],
+    () => getChatGPTOAuthPoolOwnership(ownProviders, { enabledOnly: true }),
+    [ownProviders],
   );
   const oauthAvailabilityByName = useMemo(
     () => new Map(statuses.map((status) => [status.provider.name, status.availability])),
@@ -79,14 +82,14 @@ function ProviderListView() {
   );
   // Unpooled = chatgpt_oauth providers that are neither pool owners nor members
   const unpooledProviders = useMemo(
-    () => providers.filter(
+    () => ownProviders.filter(
       (p) =>
         p.provider_type === "chatgpt_oauth" &&
         p.enabled &&
         !selectablePoolOwnership.membersByOwner.has(p.name) &&
         !selectablePoolOwnership.ownerByMember.has(p.name),
     ),
-    [providers, selectablePoolOwnership],
+    [ownProviders, selectablePoolOwnership],
   );
 
   const filtered = useMemo(() => providers.filter(
@@ -198,7 +201,7 @@ function ProviderListView() {
                 <ProviderListRow
                   key={p.id}
                   provider={p}
-                  oauthPool={p.provider_type === "chatgpt_oauth" ? {
+                  oauthPool={p.provider_type === "chatgpt_oauth" && !p.inherited ? {
                     availability: oauthAvailabilityByName.get(p.name) ?? (p.enabled ? "needs_sign_in" : "disabled"),
                     role: poolOwnership.ownerByMember.has(p.name)
                       ? "member"
@@ -222,12 +225,13 @@ function ProviderListView() {
                   showPoolHint={
                     p.provider_type === "chatgpt_oauth" &&
                     p.enabled &&
+                    !p.inherited &&
                     !selectablePoolOwnership.ownerByMember.has(p.name) &&
                     !selectablePoolOwnership.membersByOwner.has(p.name) &&
                     unpooledProviders.length >= 2
                   }
-                  onClick={() => navigate(`/providers/${p.id}`)}
-                  onDelete={() => setDeleteTarget(p)}
+                  onClick={p.inherited ? undefined : () => navigate(`/providers/${p.id}`)}
+                  onDelete={p.inherited ? undefined : () => setDeleteTarget(p)}
                   onPoolSetup={() => setWizardOpen(true)}
                 />
               ))}
@@ -262,7 +266,7 @@ function ProviderListView() {
         <PoolSetupWizardDialog
           open={wizardOpen}
           onOpenChange={setWizardOpen}
-          providers={providers}
+          providers={ownProviders}
           unpooledProviders={unpooledProviders}
           onSave={async (ownerId, data) => {
             await updateProvider(ownerId, data);

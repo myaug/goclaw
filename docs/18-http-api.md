@@ -437,6 +437,8 @@ LLM provider management. API keys are encrypted with AES-256-GCM in the database
 | `DELETE` | `/v1/providers/{id}` | Delete provider |
 | `POST` | `/v1/providers/{id}/reconnect` | Reload provider runtime from stored config |
 
+**Inherited providers.** At runtime a non-master tenant falls back to a master-tenant provider with the same name when it has none of its own. `GET /v1/providers` reflects that fallback: for a non-master tenant it also returns enabled master-tenant providers whose name the tenant has not overridden, marked `"inherited": true`, with the API key masked. Inherited providers are read-only for the tenant. `GET /v1/providers/{id}`, `GET /v1/providers/{id}/models` and `POST /v1/providers/{id}/verify` accept their IDs; update, delete, reconnect and the other provider endpoints return 404. To override one, the tenant creates its own provider with the same `name`.
+
 ### Provider Verification & Models
 
 | Method | Path | Description |

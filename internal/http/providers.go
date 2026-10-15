@@ -606,13 +606,20 @@ func (h *ProvidersHandler) handleListProviders(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	for i := range providers {
-		maskAPIKey(&providers[i])
+	inherited, err := h.listInheritedProviders(r.Context(), providers)
+	if err != nil {
+		slog.Error("providers.list_inherited", "error", err)
+		locale := extractLocale(r)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToList, "providers")})
+		return
 	}
 
-	publicProviders := make([]store.LLMProviderData, 0, len(providers))
+	publicProviders := make([]providerResponse, 0, len(providers)+len(inherited))
 	for i := range providers {
-		publicProviders = append(publicProviders, canonicalizeProviderForResponse(&providers[i]))
+		publicProviders = append(publicProviders, newProviderResponse(&providers[i], false))
+	}
+	for i := range inherited {
+		publicProviders = append(publicProviders, newProviderResponse(&inherited[i], true))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"providers": publicProviders})
 }
@@ -697,15 +704,13 @@ func (h *ProvidersHandler) handleGetProvider(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	p, err := h.store.GetProvider(r.Context(), id)
+	p, inherited, err := h.getProviderForRead(r.Context(), id)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": i18n.T(locale, i18n.MsgNotFound, "provider", id.String())})
 		return
 	}
 
-	maskAPIKey(p)
-	publicProvider := canonicalizeProviderForResponse(p)
-	writeJSON(w, http.StatusOK, publicProvider)
+	writeJSON(w, http.StatusOK, newProviderResponse(p, inherited))
 }
 
 func (h *ProvidersHandler) handleReconnectProvider(w http.ResponseWriter, r *http.Request) {
@@ -920,13 +925,16 @@ func (h *ProvidersHandler) handleDeleteProvider(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Read provider before deleting so we can unregister it
-	var providerName string
-	var providerTenantID uuid.UUID
-	if p, err := h.store.GetProvider(r.Context(), id); err == nil {
-		providerName = p.Name
-		providerTenantID = p.TenantID
+	// Read provider before deleting so we can unregister it. A provider outside the
+	// tenant's scope (another tenant's, or an inherited master provider) is 404: the
+	// scoped DELETE would match no row and the request must not report "deleted".
+	p, err := h.store.GetProvider(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": i18n.T(locale, i18n.MsgNotFound, "provider", id.String())})
+		return
 	}
+	providerName := p.Name
+	providerTenantID := p.TenantID
 
 	if err := h.store.DeleteProvider(r.Context(), id); err != nil {
 		slog.Error("providers.delete", "error", err)

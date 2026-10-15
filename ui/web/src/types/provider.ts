@@ -14,6 +14,8 @@ export interface ProviderData {
   settings?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  /** Read-only master-tenant provider this tenant uses until it creates one with the same name. */
+  inherited?: boolean;
 }
 
 export interface ProviderInput {

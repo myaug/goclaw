@@ -264,6 +264,7 @@ export function HeartbeatConfigDialog({
               model={hbModel}
               onModelChange={(v) => setValue("hbModel", v)}
               allowEmpty
+              excludeInherited
               showVerify={!!(hbProvider && hbModel)}
               providerPlaceholder={agentProvider ? `(${agentProvider})` : "(agent default)"}
               modelPlaceholder={agentModel ? `(${agentModel})` : "(agent default)"}

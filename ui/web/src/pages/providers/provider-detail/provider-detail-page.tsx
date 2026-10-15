@@ -21,7 +21,7 @@ export function ProviderDetailPage({ providerId, onBack }: ProviderDetailPagePro
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const provider = providers.find((p) => p.id === providerId);
+  const provider = providers.find((p) => p.id === providerId && !p.inherited);
 
   if (loading || !provider) {
     return <DetailPageSkeleton tabs={0} />;

@@ -39,6 +39,8 @@ interface ProviderModelSelectProps {
   allowEmpty?: boolean;
   /** When true, only show providers with settings.embedding.enabled. */
   filterEmbedding?: boolean;
+  /** When true, hide inherited master-tenant providers (for settings stored by tenant-owned provider ID). */
+  excludeInherited?: boolean;
   /** Filter model list by keyword (case-insensitive). E.g. "embed" to show only embedding models. */
   modelFilter?: string;
   /** Extra models to prepend to the dropdown (e.g. curated embedding models not returned by API). */
@@ -63,6 +65,7 @@ export function ProviderModelSelect({
   onSaveBlockedChange,
   allowEmpty,
   filterEmbedding,
+  excludeInherited,
   modelFilter,
   extraModels,
   disabled,
@@ -74,6 +77,7 @@ export function ProviderModelSelect({
   const enabledProviders = useMemo(
     () => providers.filter((p) => {
       if (!p.enabled) return false;
+      if (excludeInherited && p.inherited) return false;
       // Hide pool members — pool routing is handled via the owner provider
       if (poolOwnership.ownerByMember.has(p.name)) return false;
       if (filterEmbedding) {
@@ -83,7 +87,7 @@ export function ProviderModelSelect({
       }
       return true;
     }),
-    [providers, poolOwnership, filterEmbedding],
+    [providers, poolOwnership, filterEmbedding, excludeInherited],
   );
 
   // Stable ref for callback — prevents the auto-select effect from re-running

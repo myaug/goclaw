@@ -37,7 +37,7 @@ func (h *ProvidersHandler) handleListProviderModels(w http.ResponseWriter, r *ht
 		return
 	}
 
-	p, err := h.store.GetProvider(r.Context(), id)
+	p, _, err := h.getProviderForRead(r.Context(), id)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": i18n.T(locale, i18n.MsgNotFound, "provider", id.String())})
 		return

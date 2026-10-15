@@ -295,6 +295,8 @@
   "list": {
     "poolOwner": "풀 소유자",
     "poolMember": "풀 멤버",
+    "inherited": "상속됨",
+    "inheritedHint": "마스터 테넌트에서 공유됨. 여기서는 읽기 전용이며, 같은 이름의 제공자를 만들면 재정의됩니다.",
     "poolAvailable": "풀 사용 가능",
     "poolBadge": "풀",
     "standalone": "독립형",

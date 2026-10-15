@@ -327,6 +327,8 @@
   "list": {
     "poolOwner": "Pool owner",
     "poolMember": "Pool member",
+    "inherited": "Inherited",
+    "inheritedHint": "Shared by the master tenant. Read-only here; create a provider with the same name to override it.",
     "poolAvailable": "Pool available",
     "poolBadge": "Pool",
     "standalone": "Standalone",

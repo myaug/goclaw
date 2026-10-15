@@ -263,6 +263,8 @@
   "list": {
     "poolOwner": "Chủ pool",
     "poolMember": "Thành viên pool",
+    "inherited": "Kế thừa",
+    "inheritedHint": "Được chia sẻ từ tenant master. Chỉ xem tại đây; tạo provider cùng tên để ghi đè.",
     "poolAvailable": "Sẵn sàng pool",
     "poolBadge": "Pool",
     "standalone": "Độc lập",

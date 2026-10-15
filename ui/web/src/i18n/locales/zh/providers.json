@@ -281,6 +281,8 @@
   "list": {
     "poolOwner": "池拥有者",
     "poolMember": "池成员",
+    "inherited": "继承",
+    "inheritedHint": "由主租户共享。此处只读；创建同名提供商即可覆盖。",
     "poolAvailable": "可组池",
     "poolBadge": "池",
     "standalone": "独立账户",

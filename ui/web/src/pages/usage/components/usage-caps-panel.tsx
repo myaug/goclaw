@@ -19,7 +19,9 @@ const ALL = "__all__";
 export function UsageCapsPanel() {
   const { t } = useTranslation("usage");
   const { agents } = useAgents();
-  const { providers } = useProviders();
+  const { providers: allProviders } = useProviders();
+  // Cap policies reference a tenant-owned provider_id; inherited master providers cannot be targeted.
+  const providers = useMemo(() => allProviders.filter((p) => !p.inherited), [allProviders]);
   const { utilization, events, refreshing, refresh, createPolicy, updatePolicy, deletePolicy } = useUsageCaps();
   const [windowValue, setWindowValue] = useState<UsageCapPolicy["window"]>("day");
   const [agentId, setAgentId] = useState(ALL);

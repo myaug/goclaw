@@ -580,7 +580,7 @@
       "get": {
         "tags": ["Providers"],
         "summary": "List LLM providers",
-        "responses": { "200": { "description": "Provider list (API keys masked)" } }
+        "responses": { "200": { "description": "Provider list (API keys masked). For non-master tenants, also includes enabled master-tenant providers not overridden by name, marked inherited: true (read-only)." } }
       },
       "post": {
         "tags": ["Providers"],

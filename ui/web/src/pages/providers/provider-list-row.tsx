@@ -26,7 +26,8 @@ interface ProviderListRowProps {
   provider: ProviderData;
   oauthPool?: ProviderOAuthPoolSummary;
   showPoolHint?: boolean;
-  onClick: () => void;
+  /** Omitted for read-only rows (inherited providers) — the row is not navigable. */
+  onClick?: () => void;
   onDelete?: () => void;
   onPoolSetup?: () => void;
 }
@@ -81,17 +82,18 @@ export function ProviderListRow({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      onKeyDown={(event) => {
+      onKeyDown={onClick ? (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onClick();
         }
-      }}
+      } : undefined}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-3 rounded-lg border bg-card px-4 py-2.5 text-left transition-all hover:border-primary/30 hover:shadow-sm",
+        "flex w-full items-center gap-3 rounded-lg border bg-card px-4 py-2.5 text-left transition-all",
+        onClick && "cursor-pointer hover:border-primary/30 hover:shadow-sm",
         oauthPool?.role === "owner" && "border-primary/20 bg-primary/[0.02]",
         oauthPool?.role === "member" && "relative border-sky-500/20 bg-sky-500/[0.025]",
         showMemberConnector && "ml-4 w-[calc(100%-1rem)]",
@@ -131,6 +133,11 @@ export function ProviderListRow({
               provider.enabled ? "bg-emerald-500" : "bg-muted-foreground/40",
             )}
           />
+          {provider.inherited && (
+            <Badge variant="outline" className="h-5 px-1.5 text-2xs" title={t("list.inheritedHint")}>
+              {t("list.inherited")}
+            </Badge>
+          )}
           {hasPoolRole && (
             <Badge
               variant={oauthPool.role === "owner" ? "outline" : "info"}
