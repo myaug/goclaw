@@ -226,17 +226,29 @@ func (p *AnthropicProvider) buildRequestBody(model string, req ChatRequest, stre
 
 	// Enable extended thinking if thinking_level is set
 	if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
-		budget := anthropicThinkingBudget(level)
-		body["thinking"] = map[string]any{
-			"type":          "enabled",
-			"budget_tokens": budget,
+		if anthropicAdaptiveThinking(model) {
+			// Claude 5.x models reject thinking.type="enabled"/budget_tokens.
+			// They use the adaptive format: effort levels instead of a budget,
+			// and the API manages thinking token accounting itself.
+			body["thinking"] = map[string]any{
+				"type": "adaptive",
+				"output_config": map[string]any{
+					"effort": anthropicAdaptiveEffort(level),
+				},
+			}
+		} else {
+			budget := anthropicThinkingBudget(level)
+			body["thinking"] = map[string]any{
+				"type":          "enabled",
+				"budget_tokens": budget,
+			}
+			// Ensure max_tokens accommodates thinking budget + response
+			if maxTok, ok := body["max_tokens"].(int); !ok || maxTok < budget+4096 {
+				body["max_tokens"] = budget + 8192
+			}
 		}
 		// Anthropic requires no temperature when thinking is enabled
 		delete(body, "temperature")
-		// Ensure max_tokens accommodates thinking budget + response
-		if maxTok, ok := body["max_tokens"].(int); !ok || maxTok < budget+4096 {
-			body["max_tokens"] = budget + 8192
-		}
 	}
 
 	return body
@@ -285,5 +297,46 @@ func anthropicThinkingBudget(level string) int {
 		return 32000
 	default:
 		return 10000
+	}
+}
+
+// anthropicAdaptiveThinking reports whether the model uses the adaptive
+// thinking API (thinking.type="adaptive" + output_config.effort) instead of
+// the legacy budget_tokens format. Claude 5.x models (opus-5.5, haiku-5.5,
+// ...) reject "type": "enabled" with HTTP 400.
+func anthropicAdaptiveThinking(model string) bool {
+	m := strings.ToLower(model)
+	for _, family := range []string{"claude-opus-", "claude-sonnet-", "claude-haiku-"} {
+		after, ok := strings.CutPrefix(m, family)
+		if !ok {
+			continue
+		}
+		// Take the leading number before "-" or ".": handles "5-5", "5.5",
+		// "5-thinking", and dated suffixes like "5-5-20261001".
+		majorPart := after
+		if idx := strings.IndexAny(after, "-."); idx >= 0 {
+			majorPart = after[:idx]
+		}
+		major, err := strconv.Atoi(majorPart)
+		if err != nil {
+			continue
+		}
+		return major >= 5
+	}
+	return false
+}
+
+// anthropicAdaptiveEffort maps a goclaw thinking level to the effort values
+// accepted by the adaptive thinking API (low/medium/high). Levels below low
+// clamp to low, levels above high clamp to high, and unrecognized levels fall
+// back to medium (matching anthropicThinkingBudget's default of 10000).
+func anthropicAdaptiveEffort(level string) string {
+	switch strings.ToLower(level) {
+	case "low", "minimal", "none":
+		return "low"
+	case "high", "xhigh":
+		return "high"
+	default:
+		return "medium"
 	}
 }

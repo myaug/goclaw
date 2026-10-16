@@ -150,6 +150,152 @@ func TestAnthropicAdapterToRequest_Thinking(t *testing.T) {
 	}
 }
 
+func TestAnthropicAdapterToRequest_AdaptiveThinkingForClaude5x(t *testing.T) {
+	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
+
+	cases := []struct {
+		model  string
+		level  string
+		effort string
+	}{
+		{"claude-opus-5-5", "high", "high"},
+		{"claude-haiku-5-5", "low", "low"},
+		{"claude-sonnet-5", "medium", "medium"},
+		{"claude-opus-5-thinking", "xhigh", "high"},
+		{"claude-haiku-5-5-20261001", "minimal", "low"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.model, func(t *testing.T) {
+			req := ChatRequest{
+				Model:    tc.model,
+				Messages: []Message{{Role: "user", Content: "Think about this"}},
+				Options: map[string]any{
+					OptThinkingLevel: tc.level,
+					OptTemperature:   0.7,
+					OptMaxTokens:     8192,
+				},
+			}
+			data, _, err := adapter.ToRequest(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body map[string]any
+			json.Unmarshal(data, &body)
+
+			thinking, ok := body["thinking"].(map[string]any)
+			if !ok {
+				t.Fatal("expected thinking config in body")
+			}
+			if thinking["type"] != "adaptive" {
+				t.Errorf("thinking type = %v, want adaptive", thinking["type"])
+			}
+			if _, hasBudget := thinking["budget_tokens"]; hasBudget {
+				t.Error("budget_tokens should not be sent for adaptive models")
+			}
+			outputConfig, ok := thinking["output_config"].(map[string]any)
+			if !ok {
+				t.Fatal("expected output_config in thinking config")
+			}
+			if outputConfig["effort"] != tc.effort {
+				t.Errorf("output_config.effort = %v, want %q", outputConfig["effort"], tc.effort)
+			}
+			// Temperature should be removed when thinking is enabled
+			if _, hasTemp := body["temperature"]; hasTemp {
+				t.Error("temperature should be removed when thinking is enabled")
+			}
+			// Adaptive models have no explicit budget, so max_tokens must not
+			// be inflated by a budget-derived bump.
+			if maxTok, ok := body["max_tokens"].(float64); !ok || int(maxTok) != 8192 {
+				t.Errorf("max_tokens = %v, want 8192 unchanged", body["max_tokens"])
+			}
+		})
+	}
+}
+
+func TestAnthropicAdapterToRequest_LegacyThinkingForClaude4x(t *testing.T) {
+	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
+
+	for _, model := range []string{
+		"claude-opus-4-6",
+		"claude-sonnet-4-5-20250929",
+		"claude-haiku-4-5-20251001",
+	} {
+		t.Run(model, func(t *testing.T) {
+			req := ChatRequest{
+				Model:    model,
+				Messages: []Message{{Role: "user", Content: "Think about this"}},
+				Options:  map[string]any{OptThinkingLevel: "high"},
+			}
+			data, _, err := adapter.ToRequest(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body map[string]any
+			json.Unmarshal(data, &body)
+
+			thinking, ok := body["thinking"].(map[string]any)
+			if !ok {
+				t.Fatal("expected thinking config in body")
+			}
+			if thinking["type"] != "enabled" {
+				t.Errorf("model %q: thinking type = %v, want enabled", model, thinking["type"])
+			}
+			budget, _ := thinking["budget_tokens"].(float64)
+			if int(budget) != 32000 {
+				t.Errorf("model %q: thinking budget = %v, want 32000 for high level", model, budget)
+			}
+		})
+	}
+}
+
+func TestAnthropicAdaptiveThinking(t *testing.T) {
+	adaptive := []string{
+		"claude-opus-5-5",
+		"claude-opus-5-5-20261001",
+		"claude-opus-5-thinking",
+		"claude-opus-5.5",
+		"claude-sonnet-5",
+		"claude-haiku-5-5",
+	}
+	for _, model := range adaptive {
+		if !anthropicAdaptiveThinking(model) {
+			t.Errorf("anthropicAdaptiveThinking(%q) = false, want true", model)
+		}
+	}
+	legacy := []string{
+		"claude-opus-4-6",
+		"claude-sonnet-4-5-20250929",
+		"claude-haiku-4-5-20251001",
+		"claude-opus-4-7-20260501",
+		"",
+		"gpt-5.5",
+		"random-model",
+	}
+	for _, model := range legacy {
+		if anthropicAdaptiveThinking(model) {
+			t.Errorf("anthropicAdaptiveThinking(%q) = true, want false", model)
+		}
+	}
+}
+
+func TestAnthropicAdaptiveEffort(t *testing.T) {
+	cases := map[string]string{
+		"low":     "low",
+		"medium":  "medium",
+		"high":    "high",
+		"minimal": "low",
+		"none":    "low",
+		"xhigh":   "high",
+		"weird":   "medium",
+		"":        "medium",
+	}
+	for level, want := range cases {
+		if got := anthropicAdaptiveEffort(level); got != want {
+			t.Errorf("anthropicAdaptiveEffort(%q) = %q, want %q", level, got, want)
+		}
+	}
+}
+
 func TestAnthropicAdapterToRequest_SkipsTemperatureForClaude46AndNewer(t *testing.T) {
 	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
 
