@@ -228,13 +228,13 @@ func (p *AnthropicProvider) buildRequestBody(model string, req ChatRequest, stre
 	if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
 		if anthropicAdaptiveThinking(model) {
 			// Claude 5.x models reject thinking.type="enabled"/budget_tokens.
-			// They use the adaptive format: effort levels instead of a budget,
-			// and the API manages thinking token accounting itself.
+			// They use the adaptive format: an effort level instead of a budget,
+			// and the API manages thinking token accounting itself. Effort is a
+			// direct sibling of type; nesting it under output_config is rejected
+			// with "Extra inputs are not permitted".
 			body["thinking"] = map[string]any{
-				"type": "adaptive",
-				"output_config": map[string]any{
-					"effort": anthropicAdaptiveEffort(level),
-				},
+				"type":   "adaptive",
+				"effort": anthropicAdaptiveEffort(level),
 			}
 		} else {
 			budget := anthropicThinkingBudget(level)
@@ -301,9 +301,9 @@ func anthropicThinkingBudget(level string) int {
 }
 
 // anthropicAdaptiveThinking reports whether the model uses the adaptive
-// thinking API (thinking.type="adaptive" + output_config.effort) instead of
-// the legacy budget_tokens format. Claude 5.x models (opus-5.5, haiku-5.5,
-// ...) reject "type": "enabled" with HTTP 400.
+// thinking API (thinking.type="adaptive" + effort) instead of the legacy
+// budget_tokens format. Claude 5.x models (opus-5.5, haiku-5.5, ...) reject
+// "type": "enabled" with HTTP 400.
 func anthropicAdaptiveThinking(model string) bool {
 	m := strings.ToLower(model)
 	for _, family := range []string{"claude-opus-", "claude-sonnet-", "claude-haiku-"} {

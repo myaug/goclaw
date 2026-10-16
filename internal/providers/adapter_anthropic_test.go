@@ -192,12 +192,11 @@ func TestAnthropicAdapterToRequest_AdaptiveThinkingForClaude5x(t *testing.T) {
 			if _, hasBudget := thinking["budget_tokens"]; hasBudget {
 				t.Error("budget_tokens should not be sent for adaptive models")
 			}
-			outputConfig, ok := thinking["output_config"].(map[string]any)
-			if !ok {
-				t.Fatal("expected output_config in thinking config")
+			if _, hasOutputConfig := thinking["output_config"]; hasOutputConfig {
+				t.Error("output_config must not be sent: the API rejects it as an extra input")
 			}
-			if outputConfig["effort"] != tc.effort {
-				t.Errorf("output_config.effort = %v, want %q", outputConfig["effort"], tc.effort)
+			if thinking["effort"] != tc.effort {
+				t.Errorf("thinking.effort = %v, want %q", thinking["effort"], tc.effort)
 			}
 			// Temperature should be removed when thinking is enabled
 			if _, hasTemp := body["temperature"]; hasTemp {
