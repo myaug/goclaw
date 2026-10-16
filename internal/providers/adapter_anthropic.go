@@ -58,8 +58,9 @@ func (a *AnthropicAdapter) ToRequest(req ChatRequest) ([]byte, http.Header, erro
 	h.Set("x-api-key", a.provider.apiKey)
 	h.Set("anthropic-version", anthropicAPIVersion)
 
-	// Add beta header for interleaved thinking
-	if _, hasThinking := body["thinking"]; hasThinking {
+	// Beta header only for the legacy budget_tokens thinking format;
+	// adaptive thinking (4.6+/5.x) is GA.
+	if thinking, ok := body["thinking"].(map[string]any); ok && thinking["type"] == "enabled" {
 		h.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
 	}
 

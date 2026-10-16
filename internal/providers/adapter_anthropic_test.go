@@ -150,7 +150,7 @@ func TestAnthropicAdapterToRequest_Thinking(t *testing.T) {
 	}
 }
 
-func TestAnthropicAdapterToRequest_AdaptiveThinkingForClaude5x(t *testing.T) {
+func TestAnthropicAdapterToRequest_AdaptiveThinkingForClaude46And5x(t *testing.T) {
 	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
 
 	cases := []struct {
@@ -163,6 +163,8 @@ func TestAnthropicAdapterToRequest_AdaptiveThinkingForClaude5x(t *testing.T) {
 		{"claude-sonnet-5", "medium", "medium"},
 		{"claude-opus-5-thinking", "xhigh", "high"},
 		{"claude-haiku-5-5-20261001", "minimal", "low"},
+		{"claude-opus-4-6", "high", "high"},
+		{"claude-opus-4-7-20260501", "low", "low"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.model, func(t *testing.T) {
@@ -175,7 +177,7 @@ func TestAnthropicAdapterToRequest_AdaptiveThinkingForClaude5x(t *testing.T) {
 					OptMaxTokens:     8192,
 				},
 			}
-			data, _, err := adapter.ToRequest(req)
+			data, headers, err := adapter.ToRequest(req)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -192,11 +194,28 @@ func TestAnthropicAdapterToRequest_AdaptiveThinkingForClaude5x(t *testing.T) {
 			if _, hasBudget := thinking["budget_tokens"]; hasBudget {
 				t.Error("budget_tokens should not be sent for adaptive models")
 			}
-			if _, hasOutputConfig := thinking["output_config"]; hasOutputConfig {
-				t.Error("output_config must not be sent: the API rejects it as an extra input")
+			// The thinking block accepts only type+display; effort lives in
+			// the top-level output_config parameter.
+			if _, hasEffort := thinking["effort"]; hasEffort {
+				t.Error("effort must not be sent inside thinking: the API rejects it as an extra input")
 			}
-			if thinking["effort"] != tc.effort {
-				t.Errorf("thinking.effort = %v, want %q", thinking["effort"], tc.effort)
+			if _, hasOutputConfig := thinking["output_config"]; hasOutputConfig {
+				t.Error("output_config must not be sent inside thinking: the API rejects it as an extra input")
+			}
+			if thinking["display"] != "summarized" {
+				t.Errorf("thinking.display = %v, want summarized (default omitted streams empty thinking)", thinking["display"])
+			}
+			outputConfig, ok := body["output_config"].(map[string]any)
+			if !ok {
+				t.Fatal("expected top-level output_config in body")
+			}
+			if outputConfig["effort"] != tc.effort {
+				t.Errorf("output_config.effort = %v, want %q", outputConfig["effort"], tc.effort)
+			}
+			// The interleaved-thinking beta only applies to the legacy
+			// budget_tokens format.
+			if beta := headers.Get("anthropic-beta"); beta != "" {
+				t.Errorf("anthropic-beta header = %q, want empty for adaptive thinking", beta)
 			}
 			// Temperature should be removed when thinking is enabled
 			if _, hasTemp := body["temperature"]; hasTemp {
@@ -215,8 +234,9 @@ func TestAnthropicAdapterToRequest_LegacyThinkingForClaude4x(t *testing.T) {
 	adapter, _ := NewAnthropicAdapter(ProviderConfig{APIKey: "sk-test"})
 
 	for _, model := range []string{
-		"claude-opus-4-6",
+		"claude-opus-4-5",
 		"claude-sonnet-4-5-20250929",
+		"claude-sonnet-4-20250514",
 		"claude-haiku-4-5-20251001",
 	} {
 		t.Run(model, func(t *testing.T) {
@@ -225,7 +245,7 @@ func TestAnthropicAdapterToRequest_LegacyThinkingForClaude4x(t *testing.T) {
 				Messages: []Message{{Role: "user", Content: "Think about this"}},
 				Options:  map[string]any{OptThinkingLevel: "high"},
 			}
-			data, _, err := adapter.ToRequest(req)
+			data, headers, err := adapter.ToRequest(req)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -243,6 +263,9 @@ func TestAnthropicAdapterToRequest_LegacyThinkingForClaude4x(t *testing.T) {
 			if int(budget) != 32000 {
 				t.Errorf("model %q: thinking budget = %v, want 32000 for high level", model, budget)
 			}
+			if beta := headers.Get("anthropic-beta"); beta != "interleaved-thinking-2025-05-14" {
+				t.Errorf("model %q: anthropic-beta header = %q, want interleaved-thinking-2025-05-14", model, beta)
+			}
 		})
 	}
 }
@@ -255,6 +278,10 @@ func TestAnthropicAdaptiveThinking(t *testing.T) {
 		"claude-opus-5.5",
 		"claude-sonnet-5",
 		"claude-haiku-5-5",
+		"claude-opus-4-6",
+		"claude-sonnet-4-6",
+		"claude-opus-4-7-20260501",
+		"claude-opus-4-8",
 	}
 	for _, model := range adaptive {
 		if !anthropicAdaptiveThinking(model) {
@@ -262,10 +289,10 @@ func TestAnthropicAdaptiveThinking(t *testing.T) {
 		}
 	}
 	legacy := []string{
-		"claude-opus-4-6",
+		"claude-opus-4-5",
 		"claude-sonnet-4-5-20250929",
+		"claude-sonnet-4-20250514",
 		"claude-haiku-4-5-20251001",
-		"claude-opus-4-7-20260501",
 		"",
 		"gpt-5.5",
 		"random-model",
@@ -303,7 +330,9 @@ func TestAnthropicAdapterToRequest_SkipsTemperatureForClaude46AndNewer(t *testin
 		"claude-sonnet-4-6",
 		"claude-opus-4-7-20260501",
 		"claude-opus-5",
+		"claude-opus-5.5",
 		"claude-sonnet-5",
+		"claude-haiku-5-5",
 	} {
 		t.Run(model, func(t *testing.T) {
 			req := ChatRequest{

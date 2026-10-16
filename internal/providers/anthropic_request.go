@@ -227,13 +227,19 @@ func (p *AnthropicProvider) buildRequestBody(model string, req ChatRequest, stre
 	// Enable extended thinking if thinking_level is set
 	if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
 		if anthropicAdaptiveThinking(model) {
-			// Claude 5.x models reject thinking.type="enabled"/budget_tokens.
-			// They use the adaptive format: an effort level instead of a budget,
-			// and the API manages thinking token accounting itself. Effort is a
-			// direct sibling of type; nesting it under output_config is rejected
-			// with "Extra inputs are not permitted".
+			// Claude Opus/Sonnet 4.6+ and Claude 5.x reject
+			// thinking.type="enabled"/budget_tokens (HTTP 400). They use
+			// adaptive thinking with an effort level. The thinking block
+			// accepts only type+display; effort lives in the top-level
+			// output_config parameter. Any extra field inside thinking is
+			// rejected with "Extra inputs are not permitted".
+			// display=summarized keeps visible reasoning summaries streaming
+			// back for tracing (the default "omitted" yields empty thinking).
 			body["thinking"] = map[string]any{
-				"type":   "adaptive",
+				"type":    "adaptive",
+				"display": "summarized",
+			}
+			body["output_config"] = map[string]any{
 				"effort": anthropicAdaptiveEffort(level),
 			}
 		} else {
@@ -255,33 +261,27 @@ func (p *AnthropicProvider) buildRequestBody(model string, req ChatRequest, stre
 }
 
 // anthropicSkipsTemperature reports whether the Messages API rejects sampling
-// parameters for this model. Claude Opus/Sonnet 4.6+ return HTTP 400 when
-// temperature (and top_p/top_k) are included; omit them entirely.
+// parameters for this model. Claude Opus/Sonnet 4.6+ and Claude Haiku 5.5
+// return HTTP 400 when temperature (and top_p/top_k) are included; omit them
+// entirely.
 func anthropicSkipsTemperature(model string) bool {
 	m := strings.ToLower(model)
-	for _, family := range []string{"claude-opus-", "claude-sonnet-"} {
+	for _, family := range []string{"claude-opus-", "claude-sonnet-", "claude-haiku-"} {
 		after, ok := strings.CutPrefix(m, family)
 		if !ok {
 			continue
 		}
-
-		majorPart, afterMajor, hasMinor := strings.Cut(after, "-")
-		major, err := strconv.Atoi(majorPart)
-		if err != nil {
+		major, minor, ok := parseAnthropicModelVersion(after)
+		if !ok {
 			continue
 		}
 		if major > 4 {
 			return true
 		}
-		if major < 4 || !hasMinor {
-			continue
-		}
-
-		minorPart, _, _ := strings.Cut(afterMajor, "-")
-		minor, err := strconv.Atoi(minorPart)
-		if err == nil && minor >= 6 {
+		if major == 4 && minor >= 6 {
 			return true
 		}
+		return false
 	}
 	return false
 }
@@ -301,29 +301,58 @@ func anthropicThinkingBudget(level string) int {
 }
 
 // anthropicAdaptiveThinking reports whether the model uses the adaptive
-// thinking API (thinking.type="adaptive" + effort) instead of the legacy
-// budget_tokens format. Claude 5.x models (opus-5.5, haiku-5.5, ...) reject
-// "type": "enabled" with HTTP 400.
+// thinking API (thinking.type="adaptive") instead of the legacy
+// budget_tokens format. budget_tokens is fully removed (HTTP 400) on Claude
+// Opus/Sonnet 4.7+ and all Claude 5.x, and deprecated on Opus/Sonnet 4.6;
+// adaptive is the only on-mode for those. Haiku 5.5 is adaptive too, while
+// Haiku 4.5 and older models keep the legacy format.
 func anthropicAdaptiveThinking(model string) bool {
 	m := strings.ToLower(model)
-	for _, family := range []string{"claude-opus-", "claude-sonnet-", "claude-haiku-"} {
+	if after, ok := strings.CutPrefix(m, "claude-haiku-"); ok {
+		major, _, ok := parseAnthropicModelVersion(after)
+		return ok && major >= 5
+	}
+	for _, family := range []string{"claude-opus-", "claude-sonnet-"} {
 		after, ok := strings.CutPrefix(m, family)
 		if !ok {
 			continue
 		}
-		// Take the leading number before "-" or ".": handles "5-5", "5.5",
-		// "5-thinking", and dated suffixes like "5-5-20261001".
-		majorPart := after
-		if idx := strings.IndexAny(after, "-."); idx >= 0 {
-			majorPart = after[:idx]
-		}
-		major, err := strconv.Atoi(majorPart)
-		if err != nil {
+		major, minor, ok := parseAnthropicModelVersion(after)
+		if !ok {
 			continue
 		}
-		return major >= 5
+		return major > 4 || (major == 4 && minor >= 6)
 	}
 	return false
+}
+
+// parseAnthropicModelVersion extracts the leading major/minor version from a
+// model family suffix: "5-5", "5.5", "5", "5-thinking", "5-5-20261001".
+// The minor is only recognized as a 1-2 digit segment so that dated
+// suffixes like "4-20250514" (Claude Sonnet 4) don't parse the date as a
+// version.
+func parseAnthropicModelVersion(s string) (major, minor int, ok bool) {
+	majorPart := s
+	if idx := strings.IndexAny(s, "-."); idx >= 0 {
+		majorPart = s[:idx]
+	}
+	major, err := strconv.Atoi(majorPart)
+	if err != nil {
+		return 0, 0, false
+	}
+	rest := strings.TrimLeft(s[len(majorPart):], "-.")
+	minorPart := rest
+	if idx := strings.IndexAny(rest, "-."); idx >= 0 {
+		minorPart = rest[:idx]
+	}
+	if len(minorPart) == 0 || len(minorPart) > 2 {
+		return major, 0, true
+	}
+	minor, err = strconv.Atoi(minorPart)
+	if err != nil {
+		return major, 0, true
+	}
+	return major, minor, true
 }
 
 // anthropicAdaptiveEffort maps a goclaw thinking level to the effort values

@@ -178,9 +178,10 @@ func (p *AnthropicProvider) doRequest(ctx context.Context, body any) (io.ReadClo
 	httpReq.Header.Set("x-api-key", p.apiKey)
 	httpReq.Header.Set("anthropic-version", anthropicAPIVersion)
 
-	// Add beta header for interleaved thinking when thinking is enabled
+	// The interleaved-thinking beta only applies to the legacy
+	// budget_tokens format; adaptive thinking (4.6+/5.x) is GA.
 	if bodyMap, ok := body.(map[string]any); ok {
-		if _, hasThinking := bodyMap["thinking"]; hasThinking {
+		if thinking, ok := bodyMap["thinking"].(map[string]any); ok && thinking["type"] == "enabled" {
 			httpReq.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
 		}
 	}
