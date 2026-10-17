@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -173,5 +174,99 @@ func TestStreamChat_ThinkingSignature(t *testing.T) {
 	}
 	if result.Content != "answer" {
 		t.Errorf("Content = %q, want %q", result.Content, "answer")
+	}
+}
+
+// TestStreamChat_RawBlocksCarrySignatureAndOwnArgs verifies the raw assistant
+// content replayed on tool use: each thinking block keeps its own signature
+// (the API 400s on thinking.signature missing) and each tool_use block keeps
+// its own id/name/args even when a message carries several tool blocks.
+func TestStreamChat_RawBlocksCarrySignatureAndOwnArgs(t *testing.T) {
+	events := []string{
+		"event: message_start\n",
+		`data: {"message":{"usage":{"input_tokens":10}}}` + "\n\n",
+
+		"event: content_block_start\n",
+		`data: {"index":0,"content_block":{"type":"thinking","thinking":""}}` + "\n\n",
+		"event: content_block_delta\n",
+		`data: {"index":0,"delta":{"type":"thinking_delta","thinking":"reasoning here"}}` + "\n\n",
+		"event: content_block_delta\n",
+		`data: {"index":0,"delta":{"type":"signature_delta","signature":"sig-abc"}}` + "\n\n",
+		"event: content_block_stop\n",
+		"data: {}\n\n",
+
+		"event: content_block_start\n",
+		`data: {"index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"alpha"}}` + "\n\n",
+		"event: content_block_delta\n",
+		`data: {"index":1,"delta":{"type":"input_json_delta","partial_json":"{\"a\":"}}` + "\n\n",
+		"event: content_block_delta\n",
+		`data: {"index":1,"delta":{"type":"input_json_delta","partial_json":"1}"}}` + "\n\n",
+		"event: content_block_stop\n",
+		"data: {}\n\n",
+
+		"event: content_block_start\n",
+		`data: {"index":2,"content_block":{"type":"tool_use","id":"toolu_2","name":"beta"}}` + "\n\n",
+		"event: content_block_delta\n",
+		`data: {"index":2,"delta":{"type":"input_json_delta","partial_json":"{\"b\":2}"}}` + "\n\n",
+		"event: content_block_stop\n",
+		"data: {}\n\n",
+
+		"event: content_block_start\n",
+		`data: {"index":3,"content_block":{"type":"text","text":""}}` + "\n\n",
+		"event: content_block_delta\n",
+		`data: {"index":3,"delta":{"type":"text_delta","text":"done"}}` + "\n\n",
+		"event: content_block_stop\n",
+		"data: {}\n\n",
+
+		"event: message_delta\n",
+		`data: {"delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":30}}` + "\n\n",
+		"event: message_stop\n",
+		"data: {}\n\n",
+	}
+	server := newAnthropicSSEServer(t, events)
+	p := newTestAnthropicProvider(server.URL)
+
+	req := ChatRequest{
+		Model:    "claude-opus-5-5",
+		Messages: []Message{{Role: "user", Content: "hello"}},
+	}
+	result, err := p.ChatStream(context.Background(), req, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var rawBlocks []map[string]any
+	if err := json.Unmarshal(result.RawAssistantContent, &rawBlocks); err != nil {
+		t.Fatalf("RawAssistantContent is not a block array: %v", err)
+	}
+	if len(rawBlocks) != 4 {
+		t.Fatalf("want 4 raw blocks, got %d: %s", len(rawBlocks), result.RawAssistantContent)
+	}
+	thinking := rawBlocks[0]
+	if thinking["type"] != "thinking" || thinking["thinking"] != "reasoning here" {
+		t.Errorf("thinking block = %v", thinking)
+	}
+	if thinking["signature"] != "sig-abc" {
+		t.Errorf("thinking block signature = %v, want sig-abc (the API rejects thinking blocks without it)", thinking["signature"])
+	}
+	alpha := rawBlocks[1]
+	if alpha["type"] != "tool_use" || alpha["id"] != "toolu_1" || alpha["name"] != "alpha" {
+		t.Fatalf("alpha block = %v", alpha)
+	}
+	if fmt.Sprint(alpha["input"]) != "map[a:1]" {
+		t.Errorf("alpha input = %v, want map[a:1]", alpha["input"])
+	}
+	beta := rawBlocks[2]
+	if beta["type"] != "tool_use" || beta["id"] != "toolu_2" || beta["name"] != "beta" {
+		t.Fatalf("beta block = %v", beta)
+	}
+	if fmt.Sprint(beta["input"]) != "map[b:2]" {
+		t.Errorf("beta input = %v, want map[b:2] (each tool block must replay its own args)", beta["input"])
+	}
+	if rawBlocks[3]["type"] != "text" || rawBlocks[3]["text"] != "done" {
+		t.Errorf("text block = %v", rawBlocks[3])
+	}
+	if result.ThinkingSignature != "sig-abc" {
+		t.Errorf("ThinkingSignature = %q, want sig-abc", result.ThinkingSignature)
 	}
 }

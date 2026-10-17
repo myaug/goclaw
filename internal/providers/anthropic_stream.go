@@ -34,12 +34,18 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 	// Accumulate raw JSON fragments for each tool call by index
 	toolCallJSON := make(map[int]string)
 
-	// Track content blocks for RawAssistantContent (needed for thinking block passback)
+	// Track content blocks for RawAssistantContent (needed for thinking block passback).
+	// blockText/blockSignature hold the OPEN block's own deltas so each block replays
+	// unmodified (the API requires thinking blocks to carry their signature); they are
+	// captured regardless of stripThinking, which only affects user-visible output.
 	var rawContentBlocks []json.RawMessage
 	var currentBlockType string
+	var currentToolIndex = -1
+	var blockText strings.Builder
+	var blockSignature strings.Builder
+	var lastThinkingSignature string
 	// Track thinking token count by accumulated chunk size
 	thinkingChars := 0
-	var thinkingSignature strings.Builder
 
 	sse := NewSSEScanner(cb)
 	for sse.Next() {
@@ -66,12 +72,16 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 			var ev anthropicContentBlockStartEvent
 			if err := json.Unmarshal([]byte(data), &ev); err == nil {
 				currentBlockType = ev.ContentBlock.Type
+				blockText.Reset()
+				blockSignature.Reset()
+				currentToolIndex = -1
 				if ev.ContentBlock.Type == "tool_use" {
 					result.ToolCalls = append(result.ToolCalls, ToolCall{
 						ID:        ev.ContentBlock.ID,
 						Name:      strings.TrimSpace(ev.ContentBlock.Name),
 						Arguments: make(map[string]any),
 					})
+					currentToolIndex = len(result.ToolCalls) - 1
 				}
 				// Store raw content_block for later reconstruction
 				rawContentBlocks = append(rawContentBlocks, json.RawMessage(fmt.Sprintf(`{"type":"%s"`, ev.ContentBlock.Type)))
@@ -82,11 +92,15 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 			if err := json.Unmarshal([]byte(data), &ev); err == nil {
 				switch ev.Delta.Type {
 				case "text_delta":
+					blockText.WriteString(ev.Delta.Text)
 					result.Content += ev.Delta.Text
 					if onChunk != nil {
 						onChunk(StreamChunk{Content: ev.Delta.Text})
 					}
 				case "thinking_delta":
+					// The block's own text is always kept for passback, even when the
+					// user-visible copy is stripped below.
+					blockText.WriteString(ev.Delta.Thinking)
 					// Always count raw thinking bytes for billing estimation
 					// below, even when stripping user-visible output.
 					thinkingChars += len(ev.Delta.Thinking)
@@ -97,12 +111,11 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 						}
 					}
 				case "input_json_delta":
-					if len(result.ToolCalls) > 0 {
-						idx := len(result.ToolCalls) - 1
-						toolCallJSON[idx] += ev.Delta.PartialJSON
+					if currentToolIndex >= 0 && currentToolIndex < len(result.ToolCalls) {
+						toolCallJSON[currentToolIndex] += ev.Delta.PartialJSON
 					}
 				case "signature_delta":
-					thinkingSignature.WriteString(ev.Delta.Signature)
+					blockSignature.WriteString(ev.Delta.Signature)
 				}
 			}
 
@@ -110,12 +123,17 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 			// Reconstruct the complete content block for RawAssistantContent
 			if len(rawContentBlocks) > 0 {
 				idx := len(rawContentBlocks) - 1
-				block := p.buildRawBlock(currentBlockType, result, toolCallJSON, idx)
+				block := p.buildRawBlock(currentBlockType, result, toolCallJSON, currentToolIndex,
+					blockText.String(), blockSignature.String())
 				if block != nil {
 					rawContentBlocks[idx] = block
 				}
+				if currentBlockType == "thinking" {
+					lastThinkingSignature = blockSignature.String()
+				}
 			}
 			currentBlockType = ""
+			currentToolIndex = -1
 
 		case "message_delta":
 			var ev anthropicMessageDeltaEvent
@@ -179,7 +197,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 		}
 	}
 
-	result.ThinkingSignature = thinkingSignature.String()
+	result.ThinkingSignature = lastThinkingSignature
 
 	if onChunk != nil {
 		onChunk(StreamChunk{Done: true})

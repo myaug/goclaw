@@ -36,15 +36,18 @@ func SplitSystemPromptForCache(content string) []map[string]any {
 
 // buildRawBlock reconstructs a complete content block from streaming data.
 // This is needed to preserve thinking blocks (with signatures) for tool use passback.
-func (p *AnthropicProvider) buildRawBlock(blockType string, result *ChatResponse, toolCallJSON map[int]string, _ int) json.RawMessage {
+// text/signature are the block's own accumulated deltas, toolIndex the block's tool call
+// (not the raw-content-block index: thinking/text blocks interleave with tool blocks).
+func (p *AnthropicProvider) buildRawBlock(blockType string, result *ChatResponse, toolCallJSON map[int]string,
+	toolIndex int, text, signature string) json.RawMessage {
 	switch blockType {
 	case "thinking":
 		block := map[string]any{
 			"type":     "thinking",
-			"thinking": result.Thinking,
+			"thinking": text,
 		}
-		if result.ThinkingSignature != "" {
-			block["signature"] = result.ThinkingSignature
+		if signature != "" {
+			block["signature"] = signature
 		}
 		if b, err := json.Marshal(block); err == nil {
 			return b
@@ -52,20 +55,19 @@ func (p *AnthropicProvider) buildRawBlock(blockType string, result *ChatResponse
 	case "text":
 		block := map[string]any{
 			"type": "text",
-			"text": result.Content,
+			"text": text,
 		}
 		if b, err := json.Marshal(block); err == nil {
 			return b
 		}
 	case "tool_use":
-		if len(result.ToolCalls) > 0 {
-			tc := result.ToolCalls[len(result.ToolCalls)-1]
-			// Parse accumulated JSON for this tool call
+		if toolIndex >= 0 && toolIndex < len(result.ToolCalls) {
+			tc := result.ToolCalls[toolIndex]
+			// Parse this tool call's accumulated JSON (not the last one: a message
+			// may carry several tool_use blocks and each must replay its own args).
 			args := make(map[string]any)
-			for i, rawJSON := range toolCallJSON {
-				if i == len(result.ToolCalls)-1 && rawJSON != "" {
-					_ = json.Unmarshal([]byte(rawJSON), &args)
-				}
+			if rawJSON := toolCallJSON[toolIndex]; rawJSON != "" {
+				_ = json.Unmarshal([]byte(rawJSON), &args)
 			}
 			block := map[string]any{
 				"type":  "tool_use",
@@ -356,15 +358,18 @@ func parseAnthropicModelVersion(s string) (major, minor int, ok bool) {
 }
 
 // anthropicAdaptiveEffort maps a goclaw thinking level to the effort values
-// accepted by the adaptive thinking API (low/medium/high). Levels below low
-// clamp to low, levels above high clamp to high, and unrecognized levels fall
-// back to medium (matching anthropicThinkingBudget's default of 10000).
+// accepted by the adaptive thinking API (low/medium/high/xhigh/max). Levels
+// below low clamp to low, max and the highest goclaw level (xhigh) map to
+// xhigh, and unrecognized levels fall back to medium (matching
+// anthropicThinkingBudget's default of 10000).
 func anthropicAdaptiveEffort(level string) string {
 	switch strings.ToLower(level) {
 	case "low", "minimal", "none":
 		return "low"
-	case "high", "xhigh":
+	case "high":
 		return "high"
+	case "xhigh", "max":
+		return "xhigh"
 	default:
 		return "medium"
 	}
