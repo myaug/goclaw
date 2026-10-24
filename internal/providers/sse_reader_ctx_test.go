@@ -13,9 +13,9 @@ import (
 
 // countingCloser wraps an io.ReadCloser and counts Close calls.
 type countingCloser struct {
-	mu        sync.Mutex
+	mu         sync.Mutex
 	closeCount int
-	reader    io.Reader
+	reader     io.Reader
 }
 
 func newCountingCloser(r io.Reader) *countingCloser {
@@ -167,3 +167,121 @@ func TestCtxBody_ConcurrentCloseAndCancel(t *testing.T) {
 type nopReader struct{}
 
 func (nopReader) Read([]byte) (int, error) { return 0, io.EOF }
+
+// TestCtxBody_IdleTimeout_TripsOnStall verifies that a read which blocks past
+// the idle timeout causes the watchdog to close the body and mark IdleTimedOut.
+func TestCtxBody_IdleTimeout_TripsOnStall(t *testing.T) {
+	t.Parallel()
+
+	br := newBlockingReader()
+	ctx := context.Background() // no cancellation — only the idle timer can trip
+
+	cb := NewCtxBodyIdle(ctx, br, 30*time.Millisecond)
+	defer cb.Close()
+
+	buf := make([]byte, 8)
+	done := make(chan error, 1)
+	go func() {
+		_, err := cb.Read(buf)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected error from Read after idle timeout, got nil")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Read did not unblock after idle timeout — watchdog failed to close socket")
+	}
+
+	if !cb.IdleTimedOut() {
+		t.Fatal("expected IdleTimedOut() == true after stall")
+	}
+	if !br.closed.Load() {
+		t.Fatal("expected underlying body to be closed by idle watchdog")
+	}
+}
+
+// activityReader returns one byte per Read up to n times with a delay between
+// each, then blocks forever. Models a stream making steady progress.
+type activityReader struct {
+	remaining atomic.Int32
+	delay     time.Duration
+	block     chan struct{}
+}
+
+func newActivityReader(chunks int, delay time.Duration) *activityReader {
+	r := &activityReader{delay: delay, block: make(chan struct{})}
+	r.remaining.Store(int32(chunks))
+	return r
+}
+
+func (r *activityReader) Read(p []byte) (int, error) {
+	if r.remaining.Add(-1) >= 0 {
+		time.Sleep(r.delay)
+		p[0] = 'x'
+		return 1, nil
+	}
+	return 0, io.EOF // clean end of stream after steady progress
+}
+
+func (r *activityReader) Close() error {
+	select {
+	case <-r.block:
+	default:
+		close(r.block)
+	}
+	return nil
+}
+
+// TestCtxBody_IdleTimeout_ResetsOnActivity verifies the idle timer resets on
+// every read that makes progress: a stream whose inter-chunk gap stays under
+// the idle timeout is never killed, even if total duration exceeds it.
+func TestCtxBody_IdleTimeout_ResetsOnActivity(t *testing.T) {
+	t.Parallel()
+
+	// 10 chunks, 15ms apart = 150ms total, well past the 40ms idle timeout —
+	// but each individual gap (15ms) is under it, so the timer must keep resetting.
+	ar := newActivityReader(10, 15*time.Millisecond)
+	ctx := context.Background()
+	cb := NewCtxBodyIdle(ctx, ar, 40*time.Millisecond)
+	defer cb.Close()
+
+	buf := make([]byte, 8)
+	reads := 0
+	for {
+		n, err := cb.Read(buf)
+		if n > 0 {
+			reads++
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	if cb.IdleTimedOut() {
+		t.Fatalf("idle timeout tripped despite steady activity (got %d reads before stall)", reads)
+	}
+	if reads < 10 {
+		t.Fatalf("expected at least 10 progressing reads before stall, got %d", reads)
+	}
+}
+
+// TestStreamIdleTimeout_EnvOverride verifies the env override and default.
+func TestStreamIdleTimeout_EnvOverride(t *testing.T) {
+	t.Setenv("GOCLAW_LLM_STREAM_IDLE_TIMEOUT", "45")
+	if got := StreamIdleTimeout(); got != 45*time.Second {
+		t.Errorf("StreamIdleTimeout() = %v, want 45s", got)
+	}
+
+	t.Setenv("GOCLAW_LLM_STREAM_IDLE_TIMEOUT", "")
+	if got := StreamIdleTimeout(); got != DefaultStreamIdleTimeout {
+		t.Errorf("StreamIdleTimeout() = %v, want default %v", got, DefaultStreamIdleTimeout)
+	}
+
+	t.Setenv("GOCLAW_LLM_STREAM_IDLE_TIMEOUT", "0")
+	if got := StreamIdleTimeout(); got != 0 {
+		t.Errorf("StreamIdleTimeout() = %v, want 0 (disabled)", got)
+	}
+}

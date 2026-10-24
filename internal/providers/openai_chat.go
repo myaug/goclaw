@@ -84,8 +84,12 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest, onChun
 	if err != nil {
 		return nil, err
 	}
-	// Wrap respBody so ctx cancellation closes the socket, unblocking bufio.Scanner.
-	cb := NewCtxBody(ctx, respBody)
+	// Wrap respBody so ctx cancellation OR a mid-stream stall closes the socket,
+	// unblocking the SSE read. Without the idle timeout, a provider that returns
+	// headers and then stalls (TCP alive, no further bytes) would wedge this read
+	// — and its scheduler lane — indefinitely, since agent run contexts carry no
+	// deadline.
+	cb := NewCtxBodyIdle(ctx, respBody, StreamIdleTimeout())
 	defer cb.Close()
 
 	result := &ChatResponse{FinishReason: "stop"}
@@ -192,7 +196,15 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest, onChun
 
 	// Check for scanner errors (timeout, connection reset, etc.)
 	if err := sse.Err(); err != nil {
+		if cb.IdleTimedOut() {
+			return result, fmt.Errorf("%s: stream stalled (no data for %s): timeout", p.name, StreamIdleTimeout())
+		}
 		return result, fmt.Errorf("%s: stream read error: %w", p.name, err)
+	}
+	// A clean scanner end that was actually caused by the idle watchdog closing
+	// the socket mid-stream must not be mistaken for a complete response.
+	if cb.IdleTimedOut() {
+		return result, fmt.Errorf("%s: stream stalled (no data for %s): timeout", p.name, StreamIdleTimeout())
 	}
 
 	// Parse accumulated tool call arguments.

@@ -26,8 +26,9 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 	if err != nil {
 		return nil, err
 	}
-	// Wrap respBody so ctx cancellation closes the socket, unblocking bufio.Scanner.
-	cb := NewCtxBody(ctx, respBody)
+	// Wrap respBody so ctx cancellation OR a mid-stream stall closes the socket,
+	// unblocking the SSE read. See CtxBody / StreamIdleTimeout for rationale.
+	cb := NewCtxBodyIdle(ctx, respBody, StreamIdleTimeout())
 	defer cb.Close()
 
 	result := &ChatResponse{FinishReason: "stop"}
@@ -168,7 +169,13 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 	}
 
 	if err := sse.Err(); err != nil {
+		if cb.IdleTimedOut() {
+			return result, fmt.Errorf("anthropic: stream stalled (no data for %s): timeout", StreamIdleTimeout())
+		}
 		return result, fmt.Errorf("anthropic stream read error: %w", err)
+	}
+	if cb.IdleTimedOut() {
+		return result, fmt.Errorf("anthropic: stream stalled (no data for %s): timeout", StreamIdleTimeout())
 	}
 
 	// Parse accumulated tool call JSON arguments
