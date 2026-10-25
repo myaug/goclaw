@@ -7,11 +7,23 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 	"github.com/nextlevelbuilder/goclaw/internal/tracing"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
+
+// countLLMCalls counts the model rounds in a per-call breakdown (tool calls are listed there too).
+func countLLMCalls(calls []providers.CallUsage) int {
+	n := 0
+	for _, c := range calls {
+		if c.Type == "llm_call" {
+			n++
+		}
+	}
+	return n
+}
 
 // Run processes a single message through the agent loop.
 // It blocks until completion and returns the final response.
@@ -207,9 +219,19 @@ func (l *Loop) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 			"iterations", result.Iterations,
 		}
 		if result.Usage != nil {
+			// One line per run (interactive lead turns included, not only webhook runs) with the
+			// numbers a cost review needs: in/out, cache read/write, LLM rounds and the priced cost
+			// (0 when pricing is unknown). Greppable by "v3.run.completed" in the gateway log.
 			logAttrs = append(logAttrs,
+				"run_id", req.RunID,
+				"session", req.SessionKey,
 				"total_tokens", result.Usage.TotalTokens,
 				"total_prompt_tokens", result.Usage.PromptTokens,
+				"completion_tokens", result.Usage.CompletionTokens,
+				"cache_read_tokens", result.Usage.CacheReadTokens,
+				"cache_creation_tokens", result.Usage.CacheCreationTokens,
+				"llm_calls", countLLMCalls(result.Calls),
+				"cost_usd", providers.SumCallCost(result.Calls),
 			)
 		}
 		if result.LastUsage != nil {
