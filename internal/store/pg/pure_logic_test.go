@@ -3,6 +3,8 @@ package pg
 import (
 	"testing"
 	"time"
+
+	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
 // --- config_permissions.go: evalPermRows + matchWildcard + itoa ---
@@ -173,5 +175,79 @@ func TestContactResolveCache_ExpiredEntry(t *testing.T) {
 	}
 	if _, ok := c.get("k1"); ok {
 		t.Error("expired entry should not be returned as hit")
+	}
+}
+
+// --- usage_pricing.go: usagePricingModelCandidates + DeepSeek native aliases ---
+
+func TestUsagePricingModelCandidatesDeepSeekNativeAliases(t *testing.T) {
+	cases := []struct {
+		name         string
+		providerName string
+		providerType string
+		modelID      string
+		want         []pricingCandidate
+	}{
+		{
+			name:         "deepseek flash native expands to versioned snapshot prefixes",
+			providerName: "deepseek", providerType: store.ProviderDeepSeek, modelID: "deepseek-flash",
+			want: []pricingCandidate{
+				{value: "deepseek-flash"},
+				{value: "deepseek/deepseek-flash"},
+				{value: "deepseek/deepseek-v4.1-flash", prefix: true},
+				{value: "deepseek/deepseek-v4-flash", prefix: true},
+			},
+		},
+		{
+			name:         "deepseek v4 pro native expands to versioned snapshot prefix",
+			providerName: "deepseek", providerType: store.ProviderDeepSeek, modelID: "deepseek-v4-pro",
+			want: []pricingCandidate{
+				{value: "deepseek-v4-pro"},
+				{value: "deepseek/deepseek-v4-pro"},
+				{value: "deepseek/deepseek-v4-pro", prefix: true},
+			},
+		},
+		{
+			name:         "deepseek chat native has no snapshot alias",
+			providerName: "deepseek", providerType: store.ProviderDeepSeek, modelID: "deepseek-chat",
+			want: []pricingCandidate{
+				{value: "deepseek-chat"},
+				{value: "deepseek/deepseek-chat"},
+			},
+		},
+		{
+			name:         "non-deepseek provider unaffected",
+			providerName: "gemini", providerType: store.ProviderGeminiNative, modelID: "gemini-2.5-flash",
+			want: []pricingCandidate{
+				{value: "gemini-2.5-flash"},
+				{value: "google/gemini-2.5-flash"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := usagePricingModelCandidates(tc.providerName, tc.providerType, tc.modelID)
+			if len(got) != len(tc.want) {
+				t.Fatalf("candidates = %+v, want %+v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("candidate[%d] = %+v, want %+v", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestEscapeLikePrefix(t *testing.T) {
+	cases := map[string]string{
+		"deepseek/deepseek-v4.1-flash": `deepseek/deepseek-v4.1-flash`,
+		"a%b_c":                        `a\%b\_c`,
+		`back\slash`:                   `back\\slash`,
+	}
+	for in, want := range cases {
+		if got := escapeLikePrefix(in); got != want {
+			t.Fatalf("escapeLikePrefix(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

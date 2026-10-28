@@ -184,6 +184,11 @@ func TestPGUsageCapStoreResolvePricingUsesOpenRouterAliases(t *testing.T) {
 		{ModelID: "anthropic/claude-3-5-haiku-latest", CanonicalModelID: "anthropic/claude-3-5-haiku-latest", Pricing: store.UsagePricingFields{Input: &inputPrice, Output: &outputPrice}, SyncedAt: time.Now().UTC()},
 		{ModelID: "google/gemini-2.5-flash", CanonicalModelID: "google/gemini-2.5-flash", Pricing: store.UsagePricingFields{Input: &inputPrice, Output: &outputPrice}, SyncedAt: time.Now().UTC()},
 		{ModelID: "qwen/qwen3.7-plus", CanonicalModelID: "qwen/qwen3.7-plus", Pricing: store.UsagePricingFields{Input: &inputPrice, Output: &outputPrice}, SyncedAt: time.Now().UTC()},
+		{ModelID: "deepseek/deepseek-v4-flash", CanonicalModelID: "deepseek/deepseek-v4-flash", Pricing: store.UsagePricingFields{Input: &inputPrice, Output: &outputPrice}, SyncedAt: time.Now().UTC()},
+		{ModelID: "deepseek/deepseek-v4.1-flash-20260909", CanonicalModelID: "deepseek/deepseek-v4.1-flash-20260909", Pricing: store.UsagePricingFields{Input: &inputPrice, Output: &outputPrice}, SyncedAt: time.Now().UTC()},
+		{ModelID: "deepseek/deepseek-v4.1-flash-20261017", CanonicalModelID: "deepseek/deepseek-v4.1-flash-20261017", Pricing: store.UsagePricingFields{Input: &inputPrice, Output: &outputPrice}, SyncedAt: time.Now().UTC()},
+		{ModelID: "deepseek/deepseek-v4-pro-20260423", CanonicalModelID: "deepseek/deepseek-v4-pro-20260423", Pricing: store.UsagePricingFields{Input: &inputPrice, Output: &outputPrice}, SyncedAt: time.Now().UTC()},
+		{ModelID: "deepseek/deepseek-v4-pro-0813", CanonicalModelID: "deepseek/deepseek-v4-pro-0813", Pricing: store.UsagePricingFields{Input: &inputPrice, Output: &outputPrice}, SyncedAt: time.Now().UTC()},
 	}
 	if _, err := usageStore.UpsertPricingCatalog(context.Background(), entries); err != nil {
 		t.Fatalf("UpsertPricingCatalog: %v", err)
@@ -201,6 +206,8 @@ func TestPGUsageCapStoreResolvePricingUsesOpenRouterAliases(t *testing.T) {
 		{name: "anthropic native", providerName: "anthropic", providerType: store.ProviderAnthropicNative, modelID: "claude-3-5-haiku-latest", wantModelID: "anthropic/claude-3-5-haiku-latest"},
 		{name: "gemini native", providerName: "gemini", providerType: store.ProviderGeminiNative, modelID: "gemini-2.5-flash", wantModelID: "google/gemini-2.5-flash"},
 		{name: "bailian qwen model", providerName: "bailian", providerType: store.ProviderBailian, modelID: "qwen3.7-plus", wantModelID: "qwen/qwen3.7-plus"},
+		{name: "deepseek native flash picks newest snapshot", providerName: "deepseek", providerType: store.ProviderDeepSeek, modelID: "deepseek-flash", wantModelID: "deepseek/deepseek-v4.1-flash-20261017"},
+		{name: "deepseek native v4 pro picks newest snapshot", providerName: "deepseek", providerType: store.ProviderDeepSeek, modelID: "deepseek-v4-pro", wantModelID: "deepseek/deepseek-v4-pro-20260423"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

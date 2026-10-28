@@ -180,7 +180,12 @@ func (s *PGUsageCapStore) ResolvePricing(ctx context.Context, tenantID, provider
 	candidates := usagePricingModelCandidates(providerName, providerType, modelID)
 	if tenantID != uuid.Nil && providerID != uuid.Nil {
 		for _, candidate := range candidates {
-			row := s.db.QueryRowContext(ctx, overrideSelectSQL+` WHERE tenant_id=$1 AND provider_id=$2 AND model_id=$3 AND enabled=true`, tenantID, providerID, candidate)
+			// Overrides are tenant-authored exact ids; prefix aliases only make
+			// sense against the synced OpenRouter catalog, so skip them here.
+			if candidate.prefix {
+				continue
+			}
+			row := s.db.QueryRowContext(ctx, overrideSelectSQL+` WHERE tenant_id=$1 AND provider_id=$2 AND model_id=$3 AND enabled=true`, tenantID, providerID, candidate.value)
 			if o, err := scanOverride(row); err == nil {
 				return &store.ResolvedUsagePricing{ModelID: o.ModelID, ProviderID: providerID, ProviderType: providerType, Source: "override", Pricing: o.Pricing, OverrideID: o.ID}, nil
 			} else if !errors.Is(err, sql.ErrNoRows) {
@@ -189,12 +194,21 @@ func (s *PGUsageCapStore) ResolvePricing(ctx context.Context, tenantID, provider
 		}
 	}
 	for _, candidate := range candidates {
-		row := s.db.QueryRowContext(ctx, `
+		where := "model_id=$1 OR canonical_model_id=$1"
+		arg := candidate.value
+		if candidate.prefix {
+			// Match the newest snapshot deterministically (slugs sort so the
+			// latest dated suffix is last) and prefer canonical ids.
+			where = "model_id ILIKE $1 OR canonical_model_id ILIKE $1"
+			arg = escapeLikePrefix(candidate.value) + "%"
+		}
+		query := `
 SELECT id, model_id, COALESCE(canonical_model_id,''), raw_pricing, raw_model,
 	input_price::text, output_price::text, cache_read_price::text, cache_write_price::text,
 	reasoning_price::text, request_price::text, image_price::text, web_search_price::text,
 	synced_at, created_at, updated_at
-FROM usage_pricing_catalog WHERE model_id=$1 OR canonical_model_id=$1 LIMIT 1`, candidate)
+FROM usage_pricing_catalog WHERE ` + where + ` ORDER BY model_id DESC LIMIT 1`
+		row := s.db.QueryRowContext(ctx, query, arg)
 		e, err := scanCatalog(row)
 		if err == nil {
 			return &store.ResolvedUsagePricing{ModelID: e.ModelID, ProviderID: providerID, ProviderType: providerType, Source: "catalog", Pricing: e.Pricing, CatalogSynced: &e.SyncedAt}, nil
@@ -206,22 +220,61 @@ FROM usage_pricing_catalog WHERE model_id=$1 OR canonical_model_id=$1 LIMIT 1`, 
 	return nil, sql.ErrNoRows
 }
 
-func usagePricingModelCandidates(providerName, providerType, modelID string) []string {
+// pricingCandidate is a model id to look up in the pricing tables. Most
+// candidates match exactly (model_id/canonical_model_id equality). Some
+// provider-native ids (notably DeepSeek) map to OpenRouter slugs that carry a
+// rolling date snapshot suffix (e.g. deepseek/deepseek-v4.1-flash-20261017),
+// so those candidates are prefix patterns matched with LIKE instead.
+type pricingCandidate struct {
+	value  string
+	prefix bool // when true, value is a LIKE prefix and the catalog is matched with ILIKE value||'%'
+}
+
+func usagePricingModelCandidates(providerName, providerType, modelID string) []pricingCandidate {
 	modelID = strings.TrimSpace(modelID)
 	if modelID == "" {
 		return nil
 	}
-	out := []string{modelID}
+	out := []pricingCandidate{{value: modelID}}
 	if strings.Contains(modelID, "/") {
 		return out
 	}
 	for _, prefix := range openRouterProviderPrefixes(providerName, providerType) {
-		out = appendUniqueString(out, prefix+"/"+modelID)
+		out = appendUniqueCandidate(out, pricingCandidate{value: prefix + "/" + modelID})
 	}
 	for _, prefix := range openRouterModelPrefixes(modelID) {
-		out = appendUniqueString(out, prefix+"/"+modelID)
+		out = appendUniqueCandidate(out, pricingCandidate{value: prefix + "/" + modelID})
+	}
+	for _, alias := range deepSeekNativeAliases(providerType, modelID) {
+		out = appendUniqueCandidate(out, alias)
 	}
 	return out
+}
+
+// deepSeekNativeAliases bridges DeepSeek native API model ids to the OpenRouter
+// catalog slugs that actually carry pricing. DeepSeek serves a stable API id
+// (deepseek-flash, deepseek-v4-pro, ...) while OpenRouter publishes dated
+// snapshot slugs (deepseek/deepseek-v4.1-flash-20261017,
+// deepseek/deepseek-v4-pro-20260423, ...). The prefix candidates let a request
+// against the current native id match whatever snapshot the catalog sync
+// picked up, without hard-coding a specific date.
+func deepSeekNativeAliases(providerType, modelID string) []pricingCandidate {
+	if providerType != store.ProviderDeepSeek {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(modelID)) {
+	case "deepseek-flash":
+		return []pricingCandidate{
+			{value: "deepseek/deepseek-v4.1-flash", prefix: true},
+			{value: "deepseek/deepseek-v4-flash", prefix: true},
+		}
+	case "deepseek-v4-pro", "deepseek-pro":
+		return []pricingCandidate{
+			{value: "deepseek/deepseek-v4-pro", prefix: true},
+		}
+	default:
+		return nil
+	}
 }
 
 func openRouterProviderPrefixes(providerName, providerType string) []string {
@@ -300,6 +353,26 @@ func appendUniqueString(values []string, next string) []string {
 		}
 	}
 	return append(values, next)
+}
+
+func appendUniqueCandidate(values []pricingCandidate, next pricingCandidate) []pricingCandidate {
+	next.value = strings.TrimSpace(next.value)
+	if next.value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing.value == next.value && existing.prefix == next.prefix {
+			return values
+		}
+	}
+	return append(values, next)
+}
+
+// escapeLikePrefix escapes LIKE wildcards so a slug stem is treated literally
+// before the trailing "%" is appended by the caller.
+func escapeLikePrefix(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
 }
 
 const overrideSelectSQL = `SELECT id, tenant_id, provider_id, provider_type, model_id,
