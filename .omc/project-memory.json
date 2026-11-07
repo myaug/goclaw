@@ -1,0 +1,350 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1792076601114,
+  "projectRoot": "/Users/minh.hoang/Projects/scratch/goclaw",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Go",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "go.mod"
+        ]
+      },
+      {
+        "name": "C/C++",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Makefile"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "go",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "cat \"/private/tmp/claude-502/-Users-minh-hoang-Projects-scratch-goclaw/2e41947a-9d35-4488-afec-e723a4a4ec54/tasks/b28xif0ib.output\" | tail -3; go build ./... && go build -tags sqliteonly ./... && go vet ./... && echo BUILD_VET_OK",
+    "testCommand": "go test -count=1 ./internal/providers/ 2>&1 | tail -5",
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "examples",
+      "scripts",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "dev",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "_readmes": {
+      "path": "_readmes",
+      "purpose": null,
+      "fileCount": 30,
+      "lastAccessed": 1792076601060,
+      "keyFiles": [
+        "README.ar.md",
+        "README.bn.md",
+        "README.cs.md",
+        "README.da.md",
+        "README.de.md"
+      ]
+    },
+    "_statics": {
+      "path": "_statics",
+      "purpose": null,
+      "fileCount": 13,
+      "lastAccessed": 1792076601060,
+      "keyFiles": [
+        "3-Tier Memory Architecture.jpg",
+        "8-Stage Agent Pipeline.jpg",
+        "Agent Orchestration.jpg",
+        "DomainEventBus.jpg",
+        "Knowledge Vault.jpg"
+      ]
+    },
+    "cmd": {
+      "path": "cmd",
+      "purpose": null,
+      "fileCount": 136,
+      "lastAccessed": 1792076601062,
+      "keyFiles": [
+        "agent.go",
+        "agent_chat.go",
+        "agent_chat_client.go",
+        "auth.go",
+        "backup.go"
+      ]
+    },
+    "compose.d": {
+      "path": "compose.d",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1792076601064,
+      "keyFiles": []
+    },
+    "compose.options": {
+      "path": "compose.options",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1792076601065,
+      "keyFiles": []
+    },
+    "docker": {
+      "path": "docker",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1792076601067,
+      "keyFiles": [
+        "requirements-base.txt",
+        "requirements-skills.txt"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 46,
+      "lastAccessed": 1792076601069,
+      "keyFiles": [
+        "00-architecture-overview.md",
+        "01-agent-loop.md",
+        "02-providers.md",
+        "03-tools-system.md",
+        "04-gateway-protocol.md"
+      ]
+    },
+    "examples": {
+      "path": "examples",
+      "purpose": "Example code",
+      "fileCount": 1,
+      "lastAccessed": 1792076601071,
+      "keyFiles": []
+    },
+    "extensions": {
+      "path": "extensions",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1792076601074,
+      "keyFiles": []
+    },
+    "internal": {
+      "path": "internal",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1792076601076,
+      "keyFiles": []
+    },
+    "mcp-server": {
+      "path": "mcp-server",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1792076601078,
+      "keyFiles": [
+        "package-lock.json",
+        "package.json",
+        "tsconfig.json"
+      ]
+    },
+    "migrations": {
+      "path": "migrations",
+      "purpose": "Database migrations",
+      "fileCount": 195,
+      "lastAccessed": 1792076601081,
+      "keyFiles": [
+        "000001_init_schema.down.sql",
+        "000001_init_schema.up.sql",
+        "000002_agent_links.down.sql",
+        "000002_agent_links.up.sql",
+        "000003_agent_teams.down.sql"
+      ]
+    },
+    "options": {
+      "path": "options",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1792076601082,
+      "keyFiles": []
+    },
+    "pkg": {
+      "path": "pkg",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1792076601083,
+      "keyFiles": []
+    },
+    "plan": {
+      "path": "plan",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1792076601083,
+      "keyFiles": [
+        "goclaw-mcp-integration.md"
+      ]
+    },
+    "plans": {
+      "path": "plans",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1792076601084,
+      "keyFiles": []
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 8,
+      "lastAccessed": 1792076601085,
+      "keyFiles": [
+        "deploy-forkdev.sh",
+        "fly-deploy.sh",
+        "fly-setup.sh",
+        "install-lite.ps1",
+        "install-lite.sh"
+      ]
+    },
+    "skills": {
+      "path": "skills",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1792076601086,
+      "keyFiles": []
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 1,
+      "lastAccessed": 1792076601086,
+      "keyFiles": []
+    },
+    "ui": {
+      "path": "ui",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1792076601087,
+      "keyFiles": []
+    },
+    "mcp-server/dist": {
+      "path": "mcp-server/dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 28,
+      "lastAccessed": 1792076601092,
+      "keyFiles": [
+        "index.d.ts",
+        "index.d.ts.map",
+        "index.js"
+      ]
+    },
+    "mcp-server/node_modules": {
+      "path": "mcp-server/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 1,
+      "lastAccessed": 1792076601094,
+      "keyFiles": []
+    },
+    "mcp-server/src": {
+      "path": "mcp-server/src",
+      "purpose": "Source code",
+      "fileCount": 7,
+      "lastAccessed": 1792076601095,
+      "keyFiles": [
+        "index.ts",
+        "memory-tools.ts",
+        "model-router.ts"
+      ]
+    },
+    "mcp-server/test": {
+      "path": "mcp-server/test",
+      "purpose": "Test files",
+      "fileCount": 1,
+      "lastAccessed": 1792076601096,
+      "keyFiles": [
+        "run-tests.mjs"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "internal/providers/anthropic_request.go",
+      "accessCount": 6,
+      "lastAccessed": 1792156764376,
+      "type": "file"
+    },
+    {
+      "path": "internal/providers/adapter_anthropic_test.go",
+      "accessCount": 3,
+      "lastAccessed": 1792156772910,
+      "type": "file"
+    },
+    {
+      "path": "internal/http/providers.go",
+      "accessCount": 2,
+      "lastAccessed": 1792077975222,
+      "type": "file"
+    },
+    {
+      "path": "internal/providers/anthropic.go",
+      "accessCount": 2,
+      "lastAccessed": 1792156633751,
+      "type": "file"
+    },
+    {
+      "path": "internal/providers/adapter_anthropic.go",
+      "accessCount": 2,
+      "lastAccessed": 1792156635341,
+      "type": "file"
+    },
+    {
+      "path": "internal/http/providers_inherited.go",
+      "accessCount": 1,
+      "lastAccessed": 1792077974149,
+      "type": "file"
+    },
+    {
+      "path": "internal/http/provider_models.go",
+      "accessCount": 1,
+      "lastAccessed": 1792077975903,
+      "type": "file"
+    },
+    {
+      "path": "internal/http/provider_verify.go",
+      "accessCount": 1,
+      "lastAccessed": 1792077976562,
+      "type": "file"
+    },
+    {
+      "path": "internal/http/providers_inherited_test.go",
+      "accessCount": 1,
+      "lastAccessed": 1792078000850,
+      "type": "file"
+    },
+    {
+      "path": "ui/web/src/types/provider.ts",
+      "accessCount": 1,
+      "lastAccessed": 1792078576527,
+      "type": "file"
+    },
+    {
+      "path": "docs/18-http-api.md",
+      "accessCount": 1,
+      "lastAccessed": 1792079062720,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"export PATH=~/.nvm/versions/node/v22.22.2/bin:$PATH; node_modules/.bin/tsc -b 2>&1 | tail -20; echo \\\"tsc exit ${PIPESTATUS[0]}\\\"; node_modules/.bin/eslint src/pages/providers src/componen...",
+  "error": "Exit code 1\ntsc exit \n(eval):1: no matches found: src/pages/providers/*.test.*",
+  "timestamp": "2026-10-15T15:40:04.043Z",
+  "retry_count": 1
+}
