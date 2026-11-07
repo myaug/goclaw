@@ -40,6 +40,26 @@ func isDashScopeAPIBase(apiBase string) bool {
 	return strings.Contains(strings.ToLower(apiBase), "dashscope")
 }
 
+// isDeepSeekEndpoint returns true for DeepSeek's native API (or a reverse-proxied
+// DeepSeek endpoint). DeepSeek providers are constructed through the generic
+// `default:` case in http/providers.go, which does NOT call WithProviderType, so
+// providerType is usually empty — detection must also fall back to apiBase, name,
+// and the model string. DeepSeek's thinking-mode tool-call rule (reasoning_content
+// must be round-tripped on every assistant message when `tools` is present) hinges
+// on this check, so keep the signals broad.
+func (p *OpenAIProvider) isDeepSeekEndpoint(model string) bool {
+	if strings.Contains(strings.ToLower(strings.TrimSpace(p.providerType)), "deepseek") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(p.name), "deepseek") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(p.apiBase), "deepseek") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(model), "deepseek")
+}
+
 // isOllamaEndpoint returns true for local or self-hosted Ollama instances.
 // Ollama models such as qwq and deepseek-r1 have thinking enabled by default;
 // goclaw must send think=false to suppress it unless the user explicitly opts in.

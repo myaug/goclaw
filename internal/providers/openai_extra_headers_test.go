@@ -254,3 +254,93 @@ func TestDeepSeek_ReasoningContentAbsentWithoutThinkingMode(t *testing.T) {
 		t.Error("non-thinking conversation must not inject empty reasoning_content")
 	}
 }
+
+// TestDeepSeek_ReasoningContentInjectedWhenToolsPresentNoCapturedThinking
+// reproduces the reported HTTP 400 at "iter 1 think": a session reloaded from the
+// store whose tool-call assistant turn lost its reasoning_content (stripped or
+// never persisted). Per DeepSeek's docs, when the request carries `tools`,
+// reasoning_content must be round-tripped on EVERY assistant message — otherwise
+// the API rejects the request with
+// "The `reasoning_content` in the thinking mode must be passed back to the API."
+// The historyHasReasoning heuristic misses this because no turn has non-empty
+// Thinking; the fix gates on the presence of tools instead.
+// Trace: 0e00bf22-3930-4519-9136-96280aa9898f.
+func TestDeepSeek_ReasoningContentInjectedWhenToolsPresentNoCapturedThinking(t *testing.T) {
+	p := NewOpenAIProvider("deepseek", "sk", "https://api.deepseek.com/v1", "deepseek-chat")
+
+	body := p.buildRequestBody("deepseek-chat", ChatRequest{
+		Tools: []ToolDefinition{{
+			Type:     "function",
+			Function: &ToolFunctionSchema{Name: "exec", Description: "run"},
+		}},
+		Messages: []Message{
+			{Role: "user", Content: "thêm khoản thu 300k"},
+			// Reloaded history: tool-call turn with NO Thinking (stripped/not persisted).
+			{Role: "assistant", ToolCalls: []ToolCall{{ID: "call_1", Name: "exec", Arguments: map[string]any{}}}},
+			{Role: "tool", Content: "done", ToolCallID: "call_1"},
+		},
+	}, false)
+
+	msgs := body["messages"].([]map[string]any)
+	rc, present := msgs[1]["reasoning_content"]
+	if !present {
+		t.Fatalf("tool-mode DeepSeek assistant turn must carry reasoning_content; got %v", msgs[1])
+	}
+	if rc != "" {
+		t.Errorf("reasoning_content = %q, want empty string when Thinking unset", rc)
+	}
+}
+
+// TestDeepSeek_ReasoningContentInjectedDetectedByModelName verifies the same fix
+// works when providerType is empty (DeepSeek providers go through the generic
+// default: path in http/providers.go, which never calls WithProviderType) and
+// detection must fall back to the model string.
+func TestDeepSeek_ReasoningContentInjectedDetectedByModelName(t *testing.T) {
+	p := NewOpenAIProvider("llm-gateway", "sk", "https://proxy.internal/v1", "")
+
+	body := p.buildRequestBody("deepseek-v4-pro", ChatRequest{
+		Tools: []ToolDefinition{{
+			Type:     "function",
+			Function: &ToolFunctionSchema{Name: "read_file", Description: "read"},
+		}},
+		Messages: []Message{
+			{Role: "user", Content: "hi"},
+			{Role: "assistant", Thinking: "first reasoning", ToolCalls: []ToolCall{{ID: "call_1", Name: "read_file", Arguments: map[string]any{}}}},
+			{Role: "tool", Content: "contents", ToolCallID: "call_1"},
+			{Role: "assistant", ToolCalls: []ToolCall{{ID: "call_2", Name: "read_file", Arguments: map[string]any{}}}},
+			{Role: "tool", Content: "more", ToolCallID: "call_2"},
+		},
+	}, false)
+
+	msgs := body["messages"].([]map[string]any)
+	if got := msgs[1]["reasoning_content"]; got != "first reasoning" {
+		t.Errorf("captured reasoning clobbered: got %q", got)
+	}
+	rc, present := msgs[3]["reasoning_content"]
+	if !present {
+		t.Fatalf("later tool-call turn must carry reasoning_content; got %v", msgs[3])
+	}
+	if rc != "" {
+		t.Errorf("reasoning_content = %q, want empty string when Thinking unset", rc)
+	}
+}
+
+// TestDeepSeek_ReasoningContentOmittedWithoutTools is the negative control: when
+// the request carries no `tools`, DeepSeek ignores reasoning_content, so the
+// empty-string key must not be injected (avoids sending unnecessary fields).
+func TestDeepSeek_ReasoningContentOmittedWithoutTools(t *testing.T) {
+	p := NewOpenAIProvider("deepseek", "sk", "https://api.deepseek.com/v1", "deepseek-chat")
+
+	body := p.buildRequestBody("deepseek-chat", ChatRequest{
+		Messages: []Message{
+			{Role: "user", Content: "hi"},
+			{Role: "assistant", Content: "hello", ToolCalls: []ToolCall{{ID: "call_1", Name: "exec", Arguments: map[string]any{}}}},
+			{Role: "tool", Content: "done", ToolCallID: "call_1"},
+		},
+	}, false)
+
+	msgs := body["messages"].([]map[string]any)
+	if _, present := msgs[1]["reasoning_content"]; present {
+		t.Error("without tools, DeepSeek must not inject empty reasoning_content")
+	}
+}

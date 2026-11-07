@@ -53,6 +53,19 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 		}
 	}
 
+	// DeepSeek's documented rule (https://api-docs.deepseek.com/guides/thinking_mode):
+	// when a request carries the `tools` parameter, reasoning_content must be passed
+	// back on EVERY prior assistant message — including turns that performed no tool
+	// call and turns whose reasoning was never captured (or was stripped before
+	// persistence, e.g. deepseek-reasoner with strip_thinking). Relying on
+	// historyHasReasoning alone misses this: a reloaded session whose tool-call turns
+	// lost their Thinking produces no trigger, so the very first request (iter 1) is
+	// rejected with HTTP 400. Gate on the presence of tools instead, which matches
+	// the upstream contract exactly. When tools are absent, DeepSeek ignores the
+	// field, so there is no need to inject it.
+	// Trace: 0e00bf22-3930-4519-9136-96280aa9898f.
+	deepSeekToolMode := len(req.Tools) > 0 && p.isDeepSeekEndpoint(model)
+
 	// Convert messages to proper OpenAI wire format.
 	// This is necessary because our internal Message/ToolCall structs don't match
 	// the OpenAI API format (tool_calls need type+function wrapper, arguments as JSON string).
@@ -76,13 +89,13 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 		// kimi-k2-turbo-preview), assistant tool-call messages MUST carry
 		// reasoning_content even if empty — otherwise upstream returns 400 "thinking
 		// is enabled but reasoning_content is missing in assistant tool call message".
-		// DeepSeek enforces the same rule, but only once the conversation is in
-		// thinking mode (historyHasReasoning).
-		if m.Role == "assistant" && openAIWireAssistantReasoningContent(model) {
+		// DeepSeek enforces the same rule whenever the request carries tools
+		// (deepSeekToolMode), independent of whether any turn's reasoning survived.
+		if m.Role == "assistant" && (openAIWireAssistantReasoningContent(model) || deepSeekToolMode) {
 			switch {
 			case m.Thinking != "":
 				msg["reasoning_content"] = m.Thinking
-			case p.providerType == "kimi_coding" || historyHasReasoning:
+			case p.providerType == "kimi_coding" || deepSeekToolMode || historyHasReasoning:
 				// Send empty string rather than omit the field — satisfies the
 				// "must be present" check without inventing reasoning content.
 				msg["reasoning_content"] = ""
